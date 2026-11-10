@@ -1,0 +1,13 @@
+.env
+**/bin/
+**/obj/
+**/data/
+frontend/node_modules/
+frontend/dist/
+mobile/.gradle/
+mobile/build/
+mobile/**/build/
+mobile/local.properties
+.idea/
+*.user
+.DS_Store

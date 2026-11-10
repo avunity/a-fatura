@@ -1,0 +1,75 @@
+# A-Fatura — stack for the VPS
+#   cp .env.example .env && nano .env
+#   docker compose up -d --build
+# The web container listens only on 127.0.0.1:${WEB_PORT}; the host reverse proxy (nginx/Caddy/Traefik)
+# terminates TLS for ${PUBLIC_HOST} and forwards to it. See deploy/.
+
+name: afatura
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: afatura
+      POSTGRES_USER: afatura
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U afatura -d afatura"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
+
+  api:
+    build:
+      context: ./backend
+      args:
+        INSTALL_CLAUDE_CLI: ${INSTALL_CLAUDE_CLI:-true}
+        APP_UID: ${APP_UID:-1000}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Default: Host=db;Port=5432;Database=afatura;Username=afatura;Password=${DB_PASSWORD}
+      Jwt__Key: ${JWT_KEY:?set JWT_KEY in .env (32+ chars)}
+      Admin__Email: ${ADMIN_EMAIL:-}
+      Admin__Password: ${ADMIN_PASSWORD:-}
+      Auth__AllowSelfRegistration: ${ALLOW_SELF_REGISTRATION:-true}
+      Storage__Root: /data/files
+      Ai__Provider: ${AI_PROVIDER:-ClaudeCli}
+      Ai__Model: ${AI_MODEL:-}
+      Ai__AnthropicApiKey: ${ANTHROPIC_API_KEY:-}
+      Mail__InboundDomain: ${MAIL_INBOUND_DOMAIN:-}
+      Mail__WebhookSecret: ${MAIL_WEBHOOK_SECRET:-}
+      Mail__Imap__Enabled: ${IMAP_ENABLED:-false}
+      Mail__Imap__Host: ${IMAP_HOST:-}
+      Mail__Imap__Port: ${IMAP_PORT:-993}
+      Mail__Imap__User: ${IMAP_USER:-}
+      Mail__Imap__Password: ${IMAP_PASSWORD:-}
+      Cors__Origins__0: https://${PUBLIC_HOST}
+    volumes:
+      - files:/data/files
+      # Claude CLI already logged in on the VPS host → shared with the container (read-write: the CLI refreshes tokens)
+      - ${CLAUDE_HOME:-/root/.claude}:/home/afatura/.claude
+      - ${CLAUDE_JSON:-/root/.claude.json}:/home/afatura/.claude.json
+    networks: [internal]
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on: [api]
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8095}:80"
+    networks: [internal]
+
+volumes:
+  pgdata:
+  files:
+
+networks:
+  internal:

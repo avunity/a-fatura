@@ -1,0 +1,18 @@
+# Use instead of the 127.0.0.1 port mapping when the VPS runs Traefik:
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.traefik.yml up -d --build
+# Assumes an external Docker network "proxy" shared with Traefik and a certresolver named "letsencrypt".
+services:
+  web:
+    ports: !reset []
+    networks: [internal, proxy]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.routers.afatura.rule=Host(`${PUBLIC_HOST}`)
+      - traefik.http.routers.afatura.entrypoints=websecure
+      - traefik.http.routers.afatura.tls.certresolver=letsencrypt
+      - traefik.http.services.afatura.loadbalancer.server.port=80
+
+networks:
+  proxy:
+    external: true
