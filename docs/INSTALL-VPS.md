@@ -64,8 +64,26 @@ docker compose -f docker-compose.yml -f deploy/docker-compose.traefik.yml up -d 
 4. Quando já não precisares do registo público, define `ALLOW_SELF_REGISTRATION=false` e corre `docker compose up -d`.
 
 ## 7. Email por colaborador (opcional)
-- **Webhook:** o fornecedor faz `POST https://fatura.avunity.com/api/inbound/email?key=<MAIL_WEBHOOK_SECRET>` com o MIME raw. Por exemplo, um Cloudflare Email Worker com `fetch(url, { method: 'POST', body: message.raw })`.
-- **IMAP:** caixa catch-all → `IMAP_ENABLED=true` + `IMAP_HOST/USER/PASSWORD` → `docker compose up -d`.
+Cada colaborador tem `token@in.fatura.avunity.com`. Há três formas de receber esses emails:
+
+### A) Recetor SMTP próprio — recomendado com o DNS na amen.pt
+1. **DNS na amen.pt** (zona `avunity.com` → Gerir DNS → adicionar registo):
+   | Tipo | Nome / Host | Valor | Prioridade | TTL |
+   |---|---|---|---|---|
+   | MX | `in.fatura` | `fatura.avunity.com.` | 10 | 3600 |
+   O `fatura.avunity.com` já tem o registo `A` para a VPS. O MX tem de apontar para um nome com registo A, nunca para um IP nem para um CNAME. Se o painel pedir o nome completo, usa `in.fatura.avunity.com`.
+2. **Firewall da VPS:** abre a porta 25 de entrada (`sudo ufw allow 25/tcp`, e também no firewall do fornecedor da VPS, se tiver). Confirma que nada está já a usar a porta 25: `sudo ss -ltnp | grep ':25 '`.
+3. **`.env`:** `MAIL_INBOUND_DOMAIN=in.fatura.avunity.com`, `SMTP_ENABLED=true` e descomenta `COMPOSE_FILE=docker-compose.yml:deploy/docker-compose.smtp.yml`.
+4. `docker compose up -d --build`. Nos logs deve aparecer `SMTP receiver listening on port 2525`.
+5. **Testar:** `dig MX in.fatura.avunity.com +short` → `10 fatura.avunity.com.`. Depois envia um email com um PDF para o endereço de um colaborador e segue os logs com `docker compose logs -f api | grep SMTP`.
+
+O recetor só aceita mensagens para endereços de colaboradores ativos e recusa tudo o resto com 550, por isso não funciona como relay nem guarda spam.
+
+### B) Webhook de um fornecedor (Cloudflare Email Worker, Mailgun…)
+POST do MIME raw para `https://fatura.avunity.com/api/inbound/email?key=<MAIL_WEBHOOK_SECRET>`.
+
+### C) IMAP catch-all
+Uma caixa que recebe `*@in.fatura.avunity.com` → `IMAP_ENABLED=true` + `IMAP_HOST/USER/PASSWORD` → `docker compose up -d`.
 
 ## 8. Backups e atualizações
 ```bash

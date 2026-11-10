@@ -18,6 +18,16 @@ public class MailOptions
     /// <summary>Shared secret for the inbound webhook (?key=...).</summary>
     public string? WebhookSecret { get; set; }
     public ImapOptions Imap { get; set; } = new();
+    public SmtpOptions Smtp { get; set; } = new();
+}
+
+/// <summary>Built-in SMTP receiver: the MX of the inbound domain points to the VPS and mail is delivered straight to the API.</summary>
+public class SmtpOptions
+{
+    public bool Enabled { get; set; }
+    public int Port { get; set; } = 2525;
+    public string ServerName { get; set; } = "localhost";
+    public int MaxMessageBytes { get; set; } = 30 * 1024 * 1024;
 }
 
 public class ImapOptions
@@ -41,13 +51,16 @@ public class InboundMailService(AppDbContext db, InvoiceIntake intake, Microsoft
 {
     private readonly MailOptions _o = options.Value;
 
-    public async Task<int> ProcessAsync(MimeMessage message, CancellationToken ct)
+    /// <param name="envelopeRecipients">SMTP RCPT TO addresses (more reliable than headers for BCC/forwarded mail).</param>
+    public async Task<int> ProcessAsync(MimeMessage message, CancellationToken ct, IEnumerable<string>? envelopeRecipients = null)
     {
-        var recipients = message.To.Mailboxes.Concat(message.Cc.Mailboxes).Concat(message.Bcc.Mailboxes)
+        var domain = string.IsNullOrWhiteSpace(_o.InboundDomain) ? null : _o.InboundDomain.Trim().ToLowerInvariant();
+        var recipients = (envelopeRecipients ?? Enumerable.Empty<string>()).Select(a => MailboxAddress.TryParse(a, out var mb) ? mb : null).OfType<MailboxAddress>()
+            .Concat(message.To.Mailboxes).Concat(message.Cc.Mailboxes).Concat(message.Bcc.Mailboxes)
             .Concat(message.Headers.Where(h => h.Field is "Delivered-To" or "X-Original-To" or "Envelope-To")
                 .SelectMany(h => InternetAddressList.TryParse(h.Value, out var l) ? l.Mailboxes : Enumerable.Empty<MailboxAddress>()))
             .Select(m => m.Address.ToLowerInvariant())
-            .Where(a => _o.InboundDomain == null || a.EndsWith("@" + _o.InboundDomain.ToLowerInvariant()))
+            .Where(a => domain == null || a.EndsWith("@" + domain))
             .Select(a => a.Split('@')[0].Split('+')[0])
             .Distinct().ToList();
 

@@ -1,0 +1,7 @@
+# Publishes the built-in SMTP receiver on the VPS (port 25) — use together with SMTP_ENABLED=true in .env:
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.smtp.yml up -d --build
+# (or set COMPOSE_FILE=docker-compose.yml:deploy/docker-compose.smtp.yml in .env so every command includes it)
+services:
+  api:
+    ports:
+      - "0.0.0.0:${SMTP_PUBLIC_PORT:-25}:2525"

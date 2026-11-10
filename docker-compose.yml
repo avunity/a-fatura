@@ -51,6 +51,9 @@ services:
       Mail__Imap__Port: ${IMAP_PORT:-993}
       Mail__Imap__User: ${IMAP_USER:-}
       Mail__Imap__Password: ${IMAP_PASSWORD:-}
+      Mail__Smtp__Enabled: ${SMTP_ENABLED:-false}
+      Mail__Smtp__Port: 2525
+      Mail__Smtp__ServerName: ${MAIL_INBOUND_DOMAIN:-localhost}
       Cors__Origins__0: https://${PUBLIC_HOST}
     volumes:
       - files:/data/files

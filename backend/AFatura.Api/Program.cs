@@ -90,6 +90,8 @@ builder.Services.AddSingleton<QrDecoder>();
 builder.Services.AddSingleton<InvoiceQueue>();
 builder.Services.AddHostedService<InvoiceWorker>();
 builder.Services.AddHostedService<ImapPollingWorker>();
+builder.Services.AddSingleton<AFaturaMessageStore>();
+builder.Services.AddHostedService<SmtpReceiverWorker>();
 builder.Services.AddHostedService<ReminderWorker>();
 
 switch (cfg["Ai:Provider"]?.ToLowerInvariant())
