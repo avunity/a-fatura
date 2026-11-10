@@ -28,6 +28,7 @@ export default function Login() {
         <label>Palavra-passe<input type="password" value={password} onChange={e => setPassword(e.target.value)} required /></label>
         <button className="primary" disabled={busy}>{busy ? 'A entrar…' : 'Entrar'}</button>
         <p className="small">Ainda não tem conta? <Link to="/register">Criar conta</Link></p>
+        <p className="small"><a href="/downloads/a-fatura.apk">📱 Instalar a app Android</a></p>
       </form>
     </div>
   )

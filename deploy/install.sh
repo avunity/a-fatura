@@ -39,7 +39,12 @@ if [ "${AI_PROVIDER:-ClaudeCli}" = "ClaudeCli" ]; then
 fi
 [ -n "${ADMIN_EMAIL:-}" ] && [ -n "${ADMIN_PASSWORD:-}" ] || echo "Aviso: ADMIN_EMAIL/ADMIN_PASSWORD vazios — não será criado o utilizador de backoffice."
 
-docker compose up -d --build
+if [ "${BUILD_LOCAL:-false}" = "true" ]; then
+  docker compose up -d --build            # compile on the VPS
+else
+  docker compose pull                     # prebuilt images from GitHub Actions (ghcr.io)
+  docker compose up -d --remove-orphans
+fi
 
 echo -n "A aguardar a API"
 for _ in $(seq 1 60); do

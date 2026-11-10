@@ -11,3 +11,4 @@ mobile/local.properties
 .idea/
 *.user
 .DS_Store
+frontend/public/downloads/*.apk

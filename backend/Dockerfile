@@ -21,14 +21,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
     fi && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Run as the same uid as the VPS user that owns ~/.claude (override with --build-arg APP_UID=$(id -u))
-ARG APP_UID=1000
-RUN (getent passwd $APP_UID >/dev/null || useradd -m -u $APP_UID afatura) && mkdir -p /data/files && chown -R $APP_UID /data
+# The uid is chosen at runtime (docker compose `user: ${APP_UID}`) so one prebuilt image fits any VPS user
+# that owns the Claude CLI login. HOME and the data dir are writable by any uid.
 ENV HOME=/home/afatura
-RUN mkdir -p /home/afatura && chown $APP_UID /home/afatura
+RUN mkdir -p /data/files /home/afatura && chmod 1777 /data/files /home/afatura
 
 COPY --from=build /out .
-USER $APP_UID
+USER 1000
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD curl -fs http://localhost:8080/api/health || exit 1

@@ -64,6 +64,7 @@ export default function Layout() {
           <div className="muted small">{me.name}</div>
           <div className="muted small">{me.email}</div>
           <NavLink to="/account" className="nav">👤 A minha conta</NavLink>
+          <a href="/downloads/a-fatura.apk" className="nav">📱 App Android</a>
           <button className="link" onClick={logout}>Terminar sessão</button>
         </div>
       </aside>

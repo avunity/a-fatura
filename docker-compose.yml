@@ -1,6 +1,7 @@
 # A-Fatura — stack for the VPS
 #   cp .env.example .env && nano .env
-#   docker compose up -d --build
+#   docker compose pull && docker compose up -d        (prebuilt images from GitHub Actions / GHCR)
+#   docker compose up -d --build                         (or build locally)
 # The web container listens only on 127.0.0.1:${WEB_PORT}; the host reverse proxy (nginx/Caddy/Traefik)
 # terminates TLS for ${PUBLIC_HOST} and forwards to it. See deploy/.
 
@@ -24,11 +25,12 @@ services:
     networks: [internal]
 
   api:
+    image: ${IMAGE_PREFIX:-ghcr.io/avunity/a-fatura}-api:${IMAGE_TAG:-latest}
     build:
       context: ./backend
       args:
         INSTALL_CLAUDE_CLI: ${INSTALL_CLAUDE_CLI:-true}
-        APP_UID: ${APP_UID:-1000}
+    user: "${APP_UID:-1000}"
     restart: unless-stopped
     depends_on:
       db:
@@ -63,6 +65,7 @@ services:
     networks: [internal]
 
   web:
+    image: ${IMAGE_PREFIX:-ghcr.io/avunity/a-fatura}-web:${IMAGE_TAG:-latest}
     build: ./frontend
     restart: unless-stopped
     depends_on: [api]

@@ -13,6 +13,8 @@ deploy/    vhost nginx do host, override Traefik, backup
 
 ## Deploy na VPS (novo subdomínio, Docker)
 
+> **CI/CD:** o GitHub Actions compila e publica as imagens (GHCR), o APK Android e o bundle web — ver [`docs/CI-CD.md`](docs/CI-CD.md). A VPS só faz `pull`.
+>
 > Guia completo a partir do GitHub: [`docs/INSTALL-VPS.md`](docs/INSTALL-VPS.md) — resumo: clonar → `./deploy/install.sh` (gera `.env`) → editar `.env` → `./deploy/install.sh` → reverse proxy. Atualizações: `./deploy/update.sh`.
 
 1. **DNS:** registo `A` de `fatura.avunity.com` para o IP da VPS. Para o email por colaborador, também `MX` de `in.fatura.avunity.com` (ou o encaminhamento do teu fornecedor de email; ver abaixo).

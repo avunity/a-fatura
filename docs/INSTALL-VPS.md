@@ -27,6 +27,13 @@ cd /opt/a-fatura
 ```
 (Alternativa: `gh auth login` e depois `gh repo clone avunity/a-fatura /opt/a-fatura`.)
 
+## 2b. Acesso às imagens Docker (GHCR)
+As imagens são compiladas pelo GitHub Actions ([CI-CD.md](CI-CD.md)). Faz login uma vez com um token `read:packages`:
+```bash
+echo <TOKEN> | docker login ghcr.io -u <utilizador-github> --password-stdin
+```
+(Para compilar na VPS em vez de descarregar as imagens: `BUILD_LOCAL=true ./deploy/install.sh`.)
+
 ## 3. Configuração
 ```bash
 ./deploy/install.sh      # 1.ª vez: cria .env com DB_PASSWORD, JWT_KEY, MAIL_WEBHOOK_SECRET gerados e APP_UID/CLAUDE_HOME do teu utilizador
@@ -38,7 +45,7 @@ IA:
 
 ## 4. Arrancar
 ```bash
-./deploy/install.sh      # 2.ª vez: build + up + espera pelo /api/health
+./deploy/install.sh      # 2.ª vez: pull das imagens + up + espera pelo /api/health
 docker compose ps
 docker compose logs -f api   # deve mostrar "Seeded default categories" e "Seeded admin user"
 ```

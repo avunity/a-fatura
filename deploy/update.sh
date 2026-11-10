@@ -7,7 +7,12 @@ cd "$(dirname "$0")/.."
 git pull --ff-only
 set -a; source .env; set +a
 ./deploy/backup.sh
-docker compose up -d --build
+if [ "${BUILD_LOCAL:-false}" = "true" ]; then
+  docker compose up -d --build            # compile on the VPS
+else
+  docker compose pull                     # prebuilt images from GitHub Actions (ghcr.io)
+  docker compose up -d --remove-orphans
+fi
 
 for _ in $(seq 1 60); do
   if curl -fs "http://127.0.0.1:${WEB_PORT:-8095}/api/health" >/dev/null; then
