@@ -15,6 +15,7 @@ import Messages from './pages/Messages'
 import Settings from './pages/Settings'
 import Accountant from './pages/Accountant'
 import Backoffice from './pages/Backoffice'
+import Account from './pages/Account'
 
 function Home() {
   const { me } = useSession()
@@ -39,6 +40,7 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/accountant" element={<Accountant />} />
           <Route path="/backoffice" element={<Backoffice />} />
+          <Route path="/account" element={<Account />} />
           <Route path="/o/:orgId" element={<Dashboard />} />
           <Route path="/o/:orgId/invoices" element={<Invoices />} />
           <Route path="/o/:orgId/invoices/:id" element={<InvoiceDetail />} />

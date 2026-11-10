@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { api } from '../api'
 import { useLoad, useSession } from '../session'
 import { Card, ErrorBox, Page, useOrgContext } from '../components/ui'
@@ -10,10 +10,9 @@ type Period = { year: number; month: number; closedAt: string }
 export default function Settings() {
   const { orgId } = useParams()
   const { org } = useOrgContext()
-  const { me, reload: reloadMe } = useSession()
+  const { me } = useSession()
   const [f, setF] = useState({ name: '', nif: '', address: '', email: '', submissionDeadlineDay: 10 })
   const [accEmail, setAccEmail] = useState('')
-  const [pw, setPw] = useState({ currentPassword: '', newPassword: '' })
   const [msg, setMsg] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const { data: periods, reload: reloadPeriods } = useLoad(() => api.get<Period[]>(`/api/orgs/${orgId}/periods`), [orgId])
@@ -80,11 +79,7 @@ export default function Settings() {
         </Card>
 
         <Card title={`Conta · ${me?.email}`}>
-          <div className="form-grid">
-            <label>Palavra-passe atual<input type="password" value={pw.currentPassword} onChange={e => setPw({ ...pw, currentPassword: e.target.value })} /></label>
-            <label>Nova palavra-passe<input type="password" minLength={8} value={pw.newPassword} onChange={e => setPw({ ...pw, newPassword: e.target.value })} /></label>
-          </div>
-          <button onClick={() => run(async () => { await api.post('/api/auth/change-password', pw); setPw({ currentPassword: '', newPassword: '' }); reloadMe() }, 'Palavra-passe alterada')}>Alterar palavra-passe</button>
+          <p className="small muted">Dados pessoais e palavra-passe: <Link to="/account">A minha conta</Link>.</p>
         </Card>
       </div>
     </Page>

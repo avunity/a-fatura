@@ -34,6 +34,7 @@ export default function Layout() {
         <div className="brand" onClick={() => nav('/')}>A<span>€</span>-Fatura</div>
 
         {me.role === 'Accountant' && <NavLink to="/accountant" className="nav">📊 Painel de clientes</NavLink>}
+        {me.role === 'Accountant' && me.clients.length === 0 && <div className="muted small" style={{ padding: '4px 10px' }}>Ainda sem clientes associados.</div>}
         {me.role === 'Admin' && <NavLink to="/backoffice" className="nav">🛠️ Backoffice</NavLink>}
 
         {orgs.length > 0 && (
@@ -62,11 +63,12 @@ export default function Layout() {
         <div className="sidebar-foot">
           <div className="muted small">{me.name}</div>
           <div className="muted small">{me.email}</div>
+          <NavLink to="/account" className="nav">👤 A minha conta</NavLink>
           <button className="link" onClick={logout}>Terminar sessão</button>
         </div>
       </aside>
       <main className="content">
-        {me.mustChangePassword && <div className="alert warn">Está a usar uma palavra-passe temporária. Altere-a em Definições → Conta.</div>}
+        {me.mustChangePassword && <div className="alert warn">Está a usar uma palavra-passe temporária. <NavLink to="/account">Alterar agora</NavLink>.</div>}
         <Outlet context={{ org }} />
       </main>
     </div>

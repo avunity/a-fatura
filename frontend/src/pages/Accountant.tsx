@@ -35,6 +35,12 @@ export default function Accountant() {
       <PeriodPicker year={p.year} month={p.month} onChange={(y, m) => setP({ year: y, month: m ?? 1 })} />
       <button disabled={selected.length === 0} onClick={() => setBroadcast({ subject: `Documentos de ${monthName}`, body: `Bom dia,\n\nRelembramos que os documentos de ${monthName} devem ser carregados no A-Fatura.\n\nObrigado.` })}>✉️ Mensagem a {selected.length} cliente(s)</button>
     </>}>
+      {data && data.clients.length === 0 && (
+        <div className="alert warn">
+          Ainda não tem clientes associados. Um cliente fica associado quando o <b>gestor da empresa</b> (ou o particular) vai a
+          <b> Definições → Contabilista</b> e indica o seu email, ou quando o <b>backoffice</b> faz a associação em Entidades → associar.
+        </div>
+      )}
       <div className="stats">
         <Stat label="Clientes" value={data?.totals.clients ?? 0} />
         <Stat label="Documentos no mês" value={data?.totals.invoices ?? 0} />
