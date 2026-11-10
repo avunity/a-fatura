@@ -10,6 +10,7 @@ set -a; source .env; set +a
 if [ "${BUILD_LOCAL:-false}" = "true" ]; then
   docker compose up -d --build            # compile on the VPS
 else
+  if [ -n "${GH_APP_ID:-}" ]; then ./deploy/ghcr-login.sh; fi   # GitHub App token (1h) → docker login ghcr.io
   docker compose pull                     # prebuilt images from GitHub Actions (ghcr.io)
   docker compose up -d --remove-orphans
 fi

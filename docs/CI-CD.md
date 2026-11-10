@@ -20,6 +20,9 @@ git tag v1.0.0 && git push origin v1.0.0
 Na VPS, usa `IMAGE_TAG=1.0.0` no `.env` para fixar a versão (ou `latest` para seguir o `main`) e depois corre `./deploy/update.sh`.
 
 ## VPS: acesso às imagens (pacotes privados)
+**Com a GitHub App (recomendado):** a app precisa da permissão *Packages: Read*. No `.env`, preenche `GH_APP_ID` e `GH_APP_KEY` (caminho do `.pem`). O `GH_APP_INSTALLATION_ID` é opcional. O `update.sh` corre `deploy/ghcr-login.sh` antes de cada `pull`, porque os tokens da app duram 1 hora. Para testar: `./deploy/ghcr-login.sh && docker compose pull`.
+
+**Alternativa com um PAT:**
 O repositório é privado, por isso as imagens no GHCR também são. Faz login uma vez na VPS:
 1. GitHub → Settings → Developer settings → **Personal access tokens (classic)** → scope **`read:packages`** apenas.
 2. Na VPS:
