@@ -9,6 +9,7 @@ type Summary = {
   byMonth: { month: number; total: number; vat: number; count: number }[]
   byCategory: { categoryId?: string; name: string; color: string; total: number; count: number }[]
   byVehicle: { vehicleId: string; plate: string; total: number; count: number }[]
+  byProject: { projectId: string; name: string; color: string; total: number; count: number }[]
   byStatus: { status: string; count: number }[]
   count: number; collected: number; pendingReimbursement: number
 }
@@ -49,6 +50,11 @@ export default function Dashboard() {
             return { label: m.slice(0, 3), value: v, display: eur(v), color: i + 1 === month ? 'var(--accent)' : 'var(--accent-soft)' }
           })} />
         </Card>
+        {(data?.byProject?.length ?? 0) > 0 && (
+          <Card title="Por projeto" right={<Link to={`/o/${orgId}/projects`} className="small">ver projetos</Link>}>
+            <Bars items={data!.byProject.map(p => ({ label: p.name, value: p.total, color: p.color, display: eur(p.total) }))} />
+          </Card>
+        )}
         {(data?.byVehicle.length ?? 0) > 0 && (
           <Card title="Por viatura">
             <Bars items={data!.byVehicle.map(v => ({ label: v.plate, value: v.total, display: eur(v.total) }))} />

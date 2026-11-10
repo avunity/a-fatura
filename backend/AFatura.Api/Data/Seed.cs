@@ -17,7 +17,10 @@ public static class Seed
         if (db.Database.GetMigrations().Any())
             await db.Database.MigrateAsync();
         else
+        {
             await db.Database.EnsureCreatedAsync();
+            await SchemaUpgrades.ApplyAsync(db, log); // databases created by an older version get the new tables/columns
+        }
 
         if (!await db.Categories.AnyAsync(c => c.OrganizationId == null))
         {

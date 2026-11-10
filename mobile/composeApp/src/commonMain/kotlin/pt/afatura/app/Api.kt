@@ -27,6 +27,7 @@ import kotlinx.serialization.json.Json
 @Serializable data class Me(val id: String, val email: String, val name: String, val role: String,
                             val memberships: List<Membership> = emptyList(), val clients: List<Client> = emptyList())
 @Serializable data class Vehicle(val id: String, val plate: String, val isActive: Boolean = true)
+@Serializable data class Project(val id: String, val name: String, val code: String? = null, val isActive: Boolean = true)
 @Serializable data class InvoiceItem(
     val id: String, val status: String, val supplierName: String? = null, val fileName: String? = null,
     val issueDate: String? = null, val totalAmount: Double? = null, val categoryName: String? = null,
@@ -74,15 +75,19 @@ class Api(private val settings: Settings = Settings()) {
     suspend fun vehicles(org: String): List<Vehicle> =
         http.get("$baseUrl/api/orgs/$org/vehicles") { auth() }.ensureOk().body()
 
+    suspend fun projects(org: String): List<Project> =
+        http.get("$baseUrl/api/orgs/$org/projects") { auth() }.ensureOk().body()
+
     suspend fun recentInvoices(org: String): List<InvoiceItem> =
         http.get("$baseUrl/api/orgs/$org/invoices?pageSize=30") { auth() }.ensureOk().body<InvoicePage>().items
 
-    suspend fun upload(org: String, file: CapturedFile, vehicleId: String?, paidPersonally: Boolean, notes: String?) {
+    suspend fun upload(org: String, file: CapturedFile, vehicleId: String?, paidPersonally: Boolean, notes: String?, projectId: String? = null) {
         http.submitFormWithBinaryData(
             url = "$baseUrl/api/orgs/$org/invoices",
             formData = formData {
                 append("source", "Mobile")
                 vehicleId?.let { append("vehicleId", it) }
+                projectId?.let { append("projectId", it) }
                 if (paidPersonally) append("paidPersonally", "true")
                 notes?.takeIf { it.isNotBlank() }?.let { append("notes", it) }
                 append("files", file.bytes, Headers.build {

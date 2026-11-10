@@ -16,6 +16,7 @@ import Settings from './pages/Settings'
 import Accountant from './pages/Accountant'
 import Backoffice from './pages/Backoffice'
 import Account from './pages/Account'
+import Projects from './pages/Projects'
 
 function Home() {
   const { me } = useSession()
@@ -45,6 +46,7 @@ export default function App() {
           <Route path="/o/:orgId/invoices" element={<Invoices />} />
           <Route path="/o/:orgId/invoices/:id" element={<InvoiceDetail />} />
           <Route path="/o/:orgId/vehicles" element={<Vehicles />} />
+          <Route path="/o/:orgId/projects" element={<Projects />} />
           <Route path="/o/:orgId/categories" element={<Categories />} />
           <Route path="/o/:orgId/banks" element={<Banks />} />
           <Route path="/o/:orgId/efatura" element={<EFatura />} />

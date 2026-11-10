@@ -53,6 +53,9 @@ public interface IAiExtractor
     bool Enabled { get; }
     Task<(AiExtraction? Result, string? Raw)> ExtractAsync(string filePath, string contentType, byte[] data,
         IReadOnlyList<string> categories, CancellationToken ct);
+
+    /// <summary>Free-form instruction about one document (e.g. bank statement → JSON). Returns the model text, or null.</summary>
+    Task<string?> CompleteAsync(string instructions, string filePath, string contentType, byte[] data, int maxTokens, CancellationToken ct);
 }
 
 internal static class AiPrompt
@@ -117,24 +120,28 @@ public class ClaudeCliExtractor(Microsoft.Extensions.Options.IOptions<AiOptions>
     public async Task<(AiExtraction? Result, string? Raw)> ExtractAsync(string filePath, string contentType, byte[] data,
         IReadOnlyList<string> categories, CancellationToken ct)
     {
+        var text = await RunAsync(AiPrompt.Build(categories, filePath), filePath, ct);
+        return (AiPrompt.ParseObject(text), text);
+    }
+
+    public Task<string?> CompleteAsync(string instructions, string filePath, string contentType, byte[] data, int maxTokens, CancellationToken ct) =>
+        RunAsync($"Lê o documento em \"{filePath}\".\n{instructions}", filePath, ct);
+
+    private async Task<string?> RunAsync(string prompt, string filePath, CancellationToken ct)
+    {
         await Gate.WaitAsync(ct);
         try
         {
+            var dir = Path.GetDirectoryName(filePath)!;
             var psi = new ProcessStartInfo(_o.ClaudeCliPath)
             {
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
-                WorkingDirectory = Path.GetDirectoryName(filePath)!,
+                WorkingDirectory = dir,
             };
-            psi.ArgumentList.Add("-p");
-            psi.ArgumentList.Add(AiPrompt.Build(categories, filePath));
-            psi.ArgumentList.Add("--output-format");
-            psi.ArgumentList.Add("json");
-            psi.ArgumentList.Add("--allowedTools");
-            psi.ArgumentList.Add("Read");
-            psi.ArgumentList.Add("--add-dir");
-            psi.ArgumentList.Add(Path.GetDirectoryName(filePath)!);
+            foreach (var arg in new[] { "-p", prompt, "--output-format", "json", "--allowedTools", "Read", "--add-dir", dir })
+                psi.ArgumentList.Add(arg);
             if (!string.IsNullOrWhiteSpace(_o.Model))
             {
                 psi.ArgumentList.Add("--model");
@@ -153,19 +160,17 @@ public class ClaudeCliExtractor(Microsoft.Extensions.Options.IOptions<AiOptions>
             if (proc.ExitCode != 0)
             {
                 log.LogWarning("claude CLI exited {Code}: {Err}", proc.ExitCode, await stderrTask);
-                return (null, stdout);
+                return null;
             }
 
             // --output-format json → {"type":"result","result":"<model text>",...}
-            string? text = stdout;
             try
             {
                 using var doc = JsonDocument.Parse(stdout);
-                if (doc.RootElement.TryGetProperty("result", out var r)) text = r.GetString();
+                if (doc.RootElement.TryGetProperty("result", out var r)) return r.GetString();
             }
             catch (JsonException) { /* plain text output */ }
-
-            return (AiPrompt.ParseObject(text), text);
+            return stdout;
         }
         finally
         {
@@ -183,6 +188,15 @@ public class AnthropicApiExtractor(HttpClient http, Microsoft.Extensions.Options
     public async Task<(AiExtraction? Result, string? Raw)> ExtractAsync(string filePath, string contentType, byte[] data,
         IReadOnlyList<string> categories, CancellationToken ct)
     {
+        var text = await SendAsync(AiPrompt.Build(categories), contentType, data, 1500, ct);
+        return (AiPrompt.ParseObject(text), text);
+    }
+
+    public Task<string?> CompleteAsync(string instructions, string filePath, string contentType, byte[] data, int maxTokens, CancellationToken ct) =>
+        SendAsync("Analisa o documento anexo.\n" + instructions, contentType, data, maxTokens, ct);
+
+    private async Task<string?> SendAsync(string prompt, string contentType, byte[] data, int maxTokens, CancellationToken ct)
+    {
         var isPdf = contentType.Contains("pdf", StringComparison.OrdinalIgnoreCase);
         var mediaType = isPdf ? "application/pdf" : contentType switch
         {
@@ -198,10 +212,10 @@ public class AnthropicApiExtractor(HttpClient http, Microsoft.Extensions.Options
         var body = new
         {
             model = _o.AnthropicModel,
-            max_tokens = 1500,
+            max_tokens = maxTokens,
             messages = new object[]
             {
-                new { role = "user", content = new object[] { attachment, new { type = "text", text = AiPrompt.Build(categories) } } }
+                new { role = "user", content = new object[] { attachment, new { type = "text", text = prompt } } }
             }
         };
 
@@ -218,13 +232,12 @@ public class AnthropicApiExtractor(HttpClient http, Microsoft.Extensions.Options
         if (!res.IsSuccessStatusCode)
         {
             log.LogWarning("Anthropic API {Status}: {Body}", res.StatusCode, json);
-            return (null, json);
+            return null;
         }
         using var doc = JsonDocument.Parse(json);
-        var text = string.Concat(doc.RootElement.GetProperty("content").EnumerateArray()
+        return string.Concat(doc.RootElement.GetProperty("content").EnumerateArray()
             .Where(c => c.GetProperty("type").GetString() == "text")
             .Select(c => c.GetProperty("text").GetString()));
-        return (AiPrompt.ParseObject(text), text);
     }
 }
 
@@ -233,4 +246,6 @@ public class NoAiExtractor : IAiExtractor
     public bool Enabled => false;
     public Task<(AiExtraction? Result, string? Raw)> ExtractAsync(string filePath, string contentType, byte[] data,
         IReadOnlyList<string> categories, CancellationToken ct) => Task.FromResult<(AiExtraction?, string?)>((null, null));
+    public Task<string?> CompleteAsync(string instructions, string filePath, string contentType, byte[] data, int maxTokens, CancellationToken ct) =>
+        Task.FromResult<string?>(null);
 }

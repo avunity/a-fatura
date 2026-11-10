@@ -18,6 +18,7 @@ public record InvoiceDto(
     DateOnly? IssueDate, decimal? NetAmount, decimal? VatAmount, decimal? TotalAmount, string Currency, List<VatLine> VatLines,
     string? Summary, string? LicensePlateDetected, decimal? FuelLiters, decimal? EnergyKwh,
     Guid? CategoryId, string? CategoryName, string? CategoryColor, Guid? VehicleId, string? VehiclePlate,
+    Guid? ProjectId, string? ProjectName, string? ProjectColor,
     decimal? ClassificationConfidence, string? ClassificationReason,
     bool CollectedInEFatura, Guid? EFaturaRecordId, Guid? DuplicateOfId, bool HasValidQr, List<string> Flags, string? ProcessingError,
     bool PaidPersonally, string Reimbursement, string? Notes, List<string> Tags,
@@ -30,6 +31,7 @@ public record InvoiceDto(
         i.IssueDate, i.NetAmount, i.VatAmount, i.TotalAmount, i.Currency, i.VatLines,
         i.Summary, i.LicensePlateDetected, i.FuelLiters, i.EnergyKwh,
         i.CategoryId, i.Category?.Name, i.Category?.Color, i.VehicleId, i.Vehicle?.Plate,
+        i.ProjectId, i.Project?.Name, i.Project?.Color,
         i.ClassificationConfidence, i.ClassificationReason,
         i.EFaturaRecordId != null, i.EFaturaRecordId, i.DuplicateOfId, i.HasValidQr, i.Flags, i.ProcessingError,
         i.PaidPersonally, i.Reimbursement.ToString(), i.Notes, i.Tags,
@@ -40,9 +42,10 @@ public record InvoiceDto(
 public record InvoiceUpdate(
     string? SupplierNif, string? SupplierName, string? BuyerNif, string? DocumentType, string? DocumentNumber, string? Atcud,
     DateOnly? IssueDate, decimal? NetAmount, decimal? VatAmount, decimal? TotalAmount,
-    Guid? CategoryId, Guid? VehicleId, bool ClearVehicle, string? Notes, List<string>? Tags, bool? PaidPersonally);
+    Guid? CategoryId, Guid? VehicleId, bool ClearVehicle, string? Notes, List<string>? Tags, bool? PaidPersonally,
+    Guid? ProjectId = null, bool ClearProject = false);
 
-public record InvoiceQuery(int? Year, int? Month, Guid? CategoryId, Guid? VehicleId, string? Status, Guid? UploadedBy,
+public record InvoiceQuery(int? Year, int? Month, Guid? CategoryId, Guid? VehicleId, Guid? ProjectId, string? Status, Guid? UploadedBy,
     bool? Collected, string? Source, string? Q, bool? Flagged, int Page = 1, int PageSize = 50);
 
 public static class InvoiceEndpoints
@@ -63,13 +66,13 @@ public static class InvoiceEndpoints
                 Net = x.Sum(i => i.NetAmount ?? 0)
             }).FirstOrDefaultAsync(ct);
             var pageSize = Math.Clamp(q.PageSize, 1, 500);
-            var items = await query.Include(i => i.Category).Include(i => i.Vehicle).Include(i => i.UploadedBy).Include(i => i.File)
+            var items = await query.Include(i => i.Category).Include(i => i.Vehicle).Include(i => i.Project).Include(i => i.UploadedBy).Include(i => i.File)
                 .OrderByDescending(i => i.IssueDate).ThenByDescending(i => i.CreatedAt)
                 .Skip((Math.Max(q.Page, 1) - 1) * pageSize).Take(pageSize).ToListAsync(ct);
             return Results.Ok(new { total, sums, items = items.Select(InvoiceDto.From) });
         });
 
-        g.MapPost("", async (Guid orgId, HttpRequest req, AccessService access, CurrentUser me, InvoiceIntake intake, CancellationToken ct) =>
+        g.MapPost("", async (Guid orgId, HttpRequest req, AccessService access, CurrentUser me, InvoiceIntake intake, AppDbContext db, CancellationToken ct) =>
         {
             var a = await access.GetAsync(orgId, ct);
             if (!a.CanUpload) throw new AppException(403, "Sem permissão para carregar documentos");
@@ -79,6 +82,9 @@ public static class InvoiceEndpoints
             var source = Enum.TryParse<InvoiceSource>(form["source"], true, out var s) ? s : InvoiceSource.Upload;
             Guid? vehicleId = Guid.TryParse(form["vehicleId"], out var v) ? v : null;
             Guid? categoryId = Guid.TryParse(form["categoryId"], out var c) ? c : null;
+            Guid? projectId = Guid.TryParse(form["projectId"], out var pj) ? pj : null;
+            if (projectId is { } pid && !await db.Projects.AnyAsync(p => p.Id == pid && p.OrganizationId == orgId && p.IsActive, ct))
+                throw new AppException(400, "Projeto inválido");
             var paidPersonally = bool.TryParse(form["paidPersonally"], out var pp) && pp;
 
             var created = new List<object>();
@@ -87,8 +93,8 @@ public static class InvoiceEndpoints
                 using var ms = new MemoryStream();
                 await f.CopyToAsync(ms, ct);
                 var inv = await intake.CreateAsync(orgId, me.Id, source, f.FileName, f.ContentType, ms.ToArray(),
-                    form["notes"], vehicleId, categoryId, paidPersonally, ct);
-                created.Add(new { inv.Id, f.FileName, Status = inv.Status.ToString() });
+                    form["notes"], vehicleId, categoryId, paidPersonally, projectId, ct);
+                created.Add(new { inv.Id, f.FileName, Status = inv.Status.ToString(), inv.CreatedAt });
             }
             return Results.Ok(created);
         }).DisableAntiforgery();
@@ -96,7 +102,7 @@ public static class InvoiceEndpoints
         g.MapGet("{id:guid}", async (Guid orgId, Guid id, AccessService access, CancellationToken ct) =>
         {
             var a = await access.GetAsync(orgId, ct);
-            var inv = await access.Invoices(a).Include(i => i.Category).Include(i => i.Vehicle).Include(i => i.UploadedBy).Include(i => i.File)
+            var inv = await access.Invoices(a).Include(i => i.Category).Include(i => i.Vehicle).Include(i => i.Project).Include(i => i.UploadedBy).Include(i => i.File)
                 .FirstOrDefaultAsync(i => i.Id == id, ct) ?? throw new AppException(404, "Fatura não encontrada");
             return Results.Ok(InvoiceDto.From(inv));
         });
@@ -121,6 +127,8 @@ public static class InvoiceEndpoints
                 throw new AppException(400, "Categoria inválida");
             if (u.VehicleId is { } vid && !await db.Vehicles.AnyAsync(v => v.Id == vid && v.OrganizationId == orgId, ct))
                 throw new AppException(400, "Viatura inválida");
+            if (u.ProjectId is { } pid && !await db.Projects.AnyAsync(p => p.Id == pid && p.OrganizationId == orgId, ct))
+                throw new AppException(400, "Projeto inválido");
 
             var categoryChanged = u.CategoryId != null && u.CategoryId != inv.CategoryId;
             var vehicleChanged = u.VehicleId != null && u.VehicleId != inv.VehicleId;
@@ -138,6 +146,8 @@ public static class InvoiceEndpoints
             if (u.CategoryId != null) { inv.CategoryId = u.CategoryId; inv.ClassificationConfidence = 1; inv.ClassificationReason = "Manual"; }
             if (u.ClearVehicle) inv.VehicleId = null;
             else if (u.VehicleId != null) inv.VehicleId = u.VehicleId;
+            if (u.ClearProject) inv.ProjectId = null;
+            else if (u.ProjectId != null) inv.ProjectId = u.ProjectId;
             inv.Notes = u.Notes ?? inv.Notes;
             inv.Tags = u.Tags ?? inv.Tags;
             if (u.PaidPersonally is { } p && p != inv.PaidPersonally)
@@ -222,26 +232,30 @@ public static class InvoiceEndpoints
                 .GroupBy(i => new { i.VehicleId, i.Vehicle!.Plate })
                 .Select(x => new { x.Key.VehicleId, x.Key.Plate, Total = x.Sum(i => i.TotalAmount ?? 0), Count = x.Count() })
                 .OrderByDescending(x => x.Total).ToListAsync(ct);
+            var byProject = await periodQ.Where(i => i.ProjectId != null)
+                .GroupBy(i => new { i.ProjectId, i.Project!.Name, i.Project.Color })
+                .Select(x => new { x.Key.ProjectId, x.Key.Name, x.Key.Color, Total = x.Sum(i => i.TotalAmount ?? 0), Count = x.Count() })
+                .OrderByDescending(x => x.Total).ToListAsync(ct);
             var byStatus = await periodQ.GroupBy(i => i.Status).Select(x => new { Status = x.Key.ToString(), Count = x.Count() }).ToListAsync(ct);
             var collected = await periodQ.CountAsync(i => i.EFaturaRecordId != null, ct);
             var count = await periodQ.CountAsync(ct);
             var pendingReimbursement = await periodQ.Where(i => i.Reimbursement == ReimbursementStatus.Pending || i.Reimbursement == ReimbursementStatus.Approved)
                 .SumAsync(i => i.TotalAmount ?? 0, ct);
 
-            return Results.Ok(new { byMonth, byCategory, byVehicle, byStatus, count, collected, pendingReimbursement });
+            return Results.Ok(new { byMonth, byCategory, byVehicle, byProject, byStatus, count, collected, pendingReimbursement });
         });
 
         g.MapGet("export", async (Guid orgId, int year, int month, AccessService access, FileStorage storage, CancellationToken ct) =>
         {
             var a = await access.RequireSeeAllAsync(orgId, ct);
-            var invoices = await access.Invoices(a).Include(i => i.File).Include(i => i.Category).Include(i => i.Vehicle).Include(i => i.UploadedBy)
+            var invoices = await access.Invoices(a).Include(i => i.File).Include(i => i.Category).Include(i => i.Vehicle).Include(i => i.Project).Include(i => i.UploadedBy)
                 .Where(i => i.IssueDate != null && i.IssueDate.Value.Year == year && i.IssueDate.Value.Month == month && i.DuplicateOfId == null)
                 .OrderBy(i => i.IssueDate).ToListAsync(ct);
 
             var ms = new MemoryStream();
             using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
             {
-                var csv = new StringBuilder("Data;NIF Emitente;Emitente;Tipo;Número;ATCUD;Base;IVA;Total;Categoria;Viatura;e-Fatura;Carregado por;Ficheiro\n");
+                var csv = new StringBuilder("Data;NIF Emitente;Emitente;Tipo;Número;ATCUD;Base;IVA;Total;Categoria;Viatura;Projeto;e-Fatura;Carregado por;Ficheiro\n");
                 foreach (var i in invoices)
                 {
                     var name = i.File == null ? "" :
@@ -252,7 +266,7 @@ public static class InvoiceEndpoints
                     {
                         i.IssueDate?.ToString("yyyy-MM-dd"), i.SupplierNif, i.SupplierName, i.DocumentType, i.DocumentNumber, i.Atcud,
                         i.NetAmount?.ToString("0.00"), i.VatAmount?.ToString("0.00"), i.TotalAmount?.ToString("0.00"),
-                        i.Category?.Name, i.Vehicle?.Plate, i.EFaturaRecordId != null ? "Sim" : "Não", i.UploadedBy?.Name, name
+                        i.Category?.Name, i.Vehicle?.Plate, i.Project?.Name, i.EFaturaRecordId != null ? "Sim" : "Não", i.UploadedBy?.Name, name
                     }.Select(Csv.Escape)));
                 }
                 var entry = zip.CreateEntry("resumo.csv");
@@ -268,10 +282,13 @@ public static class InvoiceEndpoints
 
     private static IQueryable<Invoice> Filter(IQueryable<Invoice> q, InvoiceQuery f)
     {
-        if (f.Year is { } y) q = q.Where(i => i.IssueDate != null && i.IssueDate.Value.Year == y);
-        if (f.Month is { } m) q = q.Where(i => i.IssueDate != null && i.IssueDate.Value.Month == m);
+        // Documents still without an issue date (just uploaded / being processed) belong to the period of their upload,
+        // so they show up in the list straight away.
+        if (f.Year is { } y) q = q.Where(i => i.IssueDate != null ? i.IssueDate.Value.Year == y : i.CreatedAt.Year == y);
+        if (f.Month is { } m) q = q.Where(i => i.IssueDate != null ? i.IssueDate.Value.Month == m : i.CreatedAt.Month == m);
         if (f.CategoryId is { } c) q = q.Where(i => i.CategoryId == c);
         if (f.VehicleId is { } v) q = q.Where(i => i.VehicleId == v);
+        if (f.ProjectId is { } pr) q = q.Where(i => i.ProjectId == pr);
         if (f.UploadedBy is { } u) q = q.Where(i => i.UploadedByUserId == u);
         if (f.Collected is { } col) q = col ? q.Where(i => i.EFaturaRecordId != null) : q.Where(i => i.EFaturaRecordId == null);
         if (Enum.TryParse<InvoiceStatus>(f.Status, true, out var st)) q = q.Where(i => i.Status == st);

@@ -72,3 +72,30 @@ public class ParserTests
         Assert.Equal(3, h1.Distinct().Count());
     }
 }
+
+public class PdfStatementTests
+{
+    [Fact]
+    public void Parses_statement_text_lines_using_balance_delta_for_sign()
+    {
+        var lines = new List<string>
+        {
+            "EXTRATO DE CONTA  Período 01-03-2025 a 31-03-2025",
+            "Data Mov. Data Valor Descritivo Montante Saldo",
+            "SALDO ANTERIOR 1.000,00",
+            "03.03 03.03 COMPRA GALP LISBOA 50,00 950,00",
+            "05.03 05.03 TRF RECEBIDA CLIENTE X 1.200,00 2.150,00",
+            "10.03 10.03 PAG SERV EDP 82,35 2.067,65",
+            "SALDO FINAL 2.067,65",
+        };
+        var (rows, opening, _) = AFatura.Api.Features.Banking.PdfStatementReader.ParseText(lines);
+        Assert.Equal(1000m, opening);
+        Assert.Equal(3, rows.Count);
+        Assert.Equal(new DateOnly(2025, 3, 3), rows[0].Date);
+        Assert.Equal(-50m, rows[0].Amount);
+        Assert.Equal(1200m, rows[1].Amount);
+        Assert.Equal(-82.35m, rows[2].Amount);
+        Assert.Equal("PAG SERV EDP", rows[2].Description);
+        Assert.Empty(AFatura.Api.Features.Banking.PdfStatementReader.CheckBalances(rows, opening, 2067.65m));
+    }
+}

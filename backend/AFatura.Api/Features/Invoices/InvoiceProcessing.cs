@@ -293,7 +293,7 @@ public class InvoiceIntake(AppDbContext db, FileStorage storage, InvoiceQueue qu
 {
     public async Task<Invoice> CreateAsync(Guid orgId, Guid userId, InvoiceSource source, string fileName, string? contentType,
         byte[] data, string? notes = null, Guid? vehicleId = null, Guid? categoryId = null, bool paidPersonally = false,
-        CancellationToken ct = default)
+        Guid? projectId = null, CancellationToken ct = default)
     {
         var type = string.IsNullOrWhiteSpace(contentType) || contentType == "application/octet-stream"
             ? FileStorage.GuessContentType(fileName) : contentType;
@@ -310,6 +310,7 @@ public class InvoiceIntake(AppDbContext db, FileStorage storage, InvoiceQueue qu
             Notes = notes,
             VehicleId = vehicleId,
             CategoryId = categoryId,
+            ProjectId = projectId,
             PaidPersonally = paidPersonally,
             Reimbursement = paidPersonally ? ReimbursementStatus.Pending : ReimbursementStatus.NotApplicable,
         };

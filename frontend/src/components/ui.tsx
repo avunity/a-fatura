@@ -91,7 +91,8 @@ export function Dropzone({ onFiles, accept, label, multiple = true }: {
 
 export function StatusPill({ status }: { status: string }) {
   const label: Record<string, string> = { Pending: 'Em fila', Processing: 'A processar', Processed: 'Processada', NeedsReview: 'Rever', Failed: 'Erro' }
-  return <span className={`pill s-${status}`}>{label[status] ?? status}</span>
+  const busy = status === 'Pending' || status === 'Processing'
+  return <span className={`pill s-${status}`}>{busy && <span className="spinner" />}{label[status] ?? status}</span>
 }
 
 export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {

@@ -131,27 +131,44 @@ public static class BankEndpoints
         });
 
         g.MapPost("{id:guid}/statements", async (Guid orgId, Guid id, HttpRequest req, AccessService access, CurrentUser me,
-            FileStorage storage, AuditService audit, AppDbContext db, CancellationToken ct) =>
+            FileStorage storage, PdfStatementReader pdfReader, AuditService audit, AppDbContext db, CancellationToken ct) =>
         {
             await access.RequireSeeAllAsync(orgId, ct);
             var acc = await db.BankAccounts.FirstOrDefaultAsync(b => b.Id == id && b.OrganizationId == orgId, ct) ?? throw new AppException(404, "Conta não encontrada");
             var form = await req.ReadFormAsync(ct);
-            var file = form.Files.FirstOrDefault() ?? throw new AppException(400, "Envie o extrato em CSV");
+            var file = form.Files.FirstOrDefault() ?? throw new AppException(400, "Envie o extrato em CSV ou PDF");
             using var ms = new MemoryStream();
             await file.CopyToAsync(ms, ct);
             var bytes = ms.ToArray();
+            var isPdf = file.ContentType.Contains("pdf", StringComparison.OrdinalIgnoreCase)
+                        || file.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
 
-            var (rows, errors) = BankStatementParser.Parse(bytes);
-            if (rows.Count == 0) throw new AppException(400, errors.FirstOrDefault() ?? "Extrato sem movimentos");
+            // The original file is kept (and the PDF must be on disk for the AI to read it).
+            var stored = await storage.SaveAsync(orgId, file.FileName, isPdf ? "application/pdf" : file.ContentType, bytes, ct);
 
-            var periodStart = Text.ParseDate(form["periodStart"]) ?? rows.Min(r => r.Date);
-            var periodEnd = Text.ParseDate(form["periodEnd"]) ?? rows.Max(r => r.Date);
+            List<ParsedTransaction> rows;
+            List<string> errors;
+            DateOnly? detectedStart = null, detectedEnd = null;
+            string method = "CSV";
+            if (isPdf)
+            {
+                var r = await pdfReader.ReadAsync(storage.FullPath(stored), bytes, ct);
+                (rows, errors, detectedStart, detectedEnd, method) = (r.Rows, r.Warnings, r.PeriodStart, r.PeriodEnd, r.Method);
+            }
+            else (rows, errors) = BankStatementParser.Parse(bytes);
+            if (rows.Count == 0)
+            {
+                await db.SaveChangesAsync(ct); // keep the uploaded file for reference
+                throw new AppException(400, errors.FirstOrDefault() ?? "Extrato sem movimentos");
+            }
+
+            var periodStart = Text.ParseDate(form["periodStart"]) ?? detectedStart ?? rows.Min(r => r.Date);
+            var periodEnd = Text.ParseDate(form["periodEnd"]) ?? detectedEnd ?? rows.Max(r => r.Date);
 
             var overlapping = await db.BankStatementImports
                 .Where(i => i.BankAccountId == id && i.PeriodStart <= periodEnd && i.PeriodEnd >= periodStart)
                 .OrderBy(i => i.PeriodStart).ToListAsync(ct);
 
-            var stored = await storage.SaveAsync(orgId, file.FileName, file.ContentType, bytes, ct);
             var import = new BankStatementImport
             {
                 BankAccountId = id, ImportedByUserId = me.Id, FileId = stored.Id, FileName = file.FileName,
@@ -180,7 +197,7 @@ public static class BankEndpoints
             }
             audit.Log(orgId, me.Id, "bank.import", nameof(BankStatementImport), import.Id, acc.Alias);
             await db.SaveChangesAsync(ct);
-            return Results.Ok(new { import, warnings = errors.Take(50) });
+            return Results.Ok(new { import, method, warnings = errors.Take(50) });
         }).DisableAntiforgery();
 
         g.MapDelete("{id:guid}/statements/{importId:guid}", async (Guid orgId, Guid id, Guid importId, AccessService access, AppDbContext db, CancellationToken ct) =>

@@ -115,6 +115,9 @@ private fun CaptureScreen(api: Api, me: Me, onLogout: () -> Unit) {
     var orgId by remember { mutableStateOf(api.orgId?.takeIf { id -> orgs.any { it.first == id } } ?: orgs.firstOrNull()?.first) }
     var vehicles by remember { mutableStateOf<List<Vehicle>>(emptyList()) }
     var vehicleId by remember { mutableStateOf<String?>(null) }
+    var projects by remember { mutableStateOf<List<Project>>(emptyList()) }
+    var projectId by remember { mutableStateOf<String?>(null) }
+    var projectMenu by remember { mutableStateOf(false) }
     var paidPersonally by remember { mutableStateOf(false) }
     var recent by remember { mutableStateOf<List<InvoiceItem>>(emptyList()) }
     val queue = remember { mutableStateListOf<Pending>() }
@@ -133,6 +136,8 @@ private fun CaptureScreen(api: Api, me: Me, onLogout: () -> Unit) {
         api.orgId = org
         vehicles = runCatching { api.vehicles(org).filter { it.isActive } }.getOrDefault(emptyList())
         vehicleId = null
+        projects = runCatching { api.projects(org).filter { it.isActive } }.getOrDefault(emptyList())
+        projectId = null
         while (true) { refresh(); delay(8000) } // statuses change as the server processes documents
     }
 
@@ -142,7 +147,7 @@ private fun CaptureScreen(api: Api, me: Me, onLogout: () -> Unit) {
         queue.add(0, item)
         scope.launch {
             try {
-                api.upload(org, file, vehicleId, paidPersonally, null)
+                api.upload(org, file, vehicleId, paidPersonally, null, projectId)
                 queue.remove(item)
                 snackbar.showSnackbar("Enviado: ${file.fileName}")
                 refresh()
@@ -191,6 +196,13 @@ private fun CaptureScreen(api: Api, me: Me, onLogout: () -> Unit) {
                         }
                     }
                     Checkbox(paidPersonally, { paidPersonally = it }); Text("Paguei eu (reembolso)", style = MaterialTheme.typography.bodySmall)
+                }
+                if (projects.isNotEmpty()) {
+                    AssistChip(onClick = { projectMenu = true }, label = { Text("Projeto: " + (projects.firstOrNull { it.id == projectId }?.name ?: "nenhum")) })
+                    DropdownMenu(projectMenu, { projectMenu = false }) {
+                        DropdownMenuItem(text = { Text("Sem projeto") }, onClick = { projectId = null; projectMenu = false })
+                        projects.forEach { p -> DropdownMenuItem(text = { Text(p.name) }, onClick = { projectId = p.id; projectMenu = false }) }
+                    }
                 }
                 mailbox?.let { Text("Também pode reencaminhar faturas para: $it", style = MaterialTheme.typography.bodySmall) }
             }

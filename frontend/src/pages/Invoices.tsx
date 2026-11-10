@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { api, type Category, type Invoice, type Vehicle } from '../api'
+import { api, type Category, type Invoice, type Project, type Vehicle } from '../api'
 import { useLoad } from '../session'
 import { Card, Dropzone, ErrorBox, Page, PeriodPicker, StatusPill, useOrgContext } from '../components/ui'
 import { date, eur, SOURCE_LABEL } from '../util'
@@ -25,8 +25,14 @@ export default function Invoices() {
   const { data, error, reload } = useLoad(() => api.get<List>(`/api/orgs/${orgId}/invoices?${qs}&pageSize=200`), [orgId, params.toString()])
   const { data: categories } = useLoad(() => api.get<Category[]>(`/api/orgs/${orgId}/categories`), [orgId])
   const { data: vehicles } = useLoad(() => api.get<Vehicle[]>(`/api/orgs/${orgId}/vehicles`), [orgId])
+  const { data: projects } = useLoad(() => api.get<Project[]>(`/api/orgs/${orgId}/projects`), [orgId])
+  const activeProjects = (projects ?? []).filter(p => p.isActive)
 
   const [uploadVehicle, setUploadVehicle] = useState('')
+  const [uploadProject, setUploadProject] = useState('')
+  // Rows shown immediately while the files are being sent; replaced by the real (Pending) rows once the server answers.
+  const [sending, setSending] = useState<{ key: string; name: string; error?: string }[]>([])
+  const [notice, setNotice] = useState<string | null>(null)
   const [paidPersonally, setPaidPersonally] = useState(false)
   const [uploading, setUploading] = useState<string | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -41,15 +47,27 @@ export default function Invoices() {
 
   async function upload(files: File[]) {
     if (files.length === 0) return
-    setUploadError(null)
+    setUploadError(null); setNotice(null)
+    const batch = files.map((f, i) => ({ key: `${Date.now()}-${i}`, name: f.name }))
+    setSending(cur => [...batch, ...cur])
     const form = new FormData()
     files.forEach(f => form.append('files', f))
     if (uploadVehicle) form.append('vehicleId', uploadVehicle)
+    if (uploadProject) form.append('projectId', uploadProject)
     if (paidPersonally) form.append('paidPersonally', 'true')
     setUploading(`A enviar ${files.length} ficheiro(s)…`)
-    try { await api.upload(`/api/orgs/${orgId}/invoices`, form); await reload() }
-    catch (e) { setUploadError((e as Error).message) }
-    finally { setUploading(null) }
+    try {
+      await api.upload(`/api/orgs/${orgId}/invoices`, form)
+      await reload()
+      setSending(cur => cur.filter(x => !batch.some(b => b.key === x.key)))
+      const now = new Date()
+      if (year !== now.getFullYear() || (month !== undefined && month !== now.getMonth() + 1))
+        setNotice(`${files.length} documento(s) enviados. Enquanto são processados aparecem em ${now.toLocaleDateString('pt-PT', { month: 'long', year: 'numeric' })}; depois ficam no mês da data da fatura.`)
+    } catch (e) {
+      const msg = (e as Error).message
+      setUploadError(msg)
+      setSending(cur => cur.map(x => (batch.some(b => b.key === x.key) ? { ...x, error: msg } : x)))
+    } finally { setUploading(null) }
   }
 
   const canExport = org?.access.canSeeAll && month
@@ -70,10 +88,19 @@ export default function Invoices() {
               </select>
             </label>
           )}
+          {activeProjects.length > 0 && (
+            <label className="inline">Projeto
+              <select value={uploadProject} onChange={e => setUploadProject(e.target.value)}>
+                <option value="">Sem projeto</option>
+                {activeProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </label>
+          )}
           <label className="inline"><input type="checkbox" checked={paidPersonally} onChange={e => setPaidPersonally(e.target.checked)} /> Paguei do meu bolso (pedir reembolso)</label>
           {uploading && <span className="muted">{uploading}</span>}
         </div>
         <ErrorBox error={uploadError} />
+        {notice && <div className="alert ok">{notice}</div>}
       </Card>
 
       <div className="filters">
@@ -86,6 +113,12 @@ export default function Invoices() {
           <select value={params.get('vehicleId') ?? ''} onChange={e => filter('vehicleId', e.target.value)}>
             <option value="">Todas as viaturas</option>
             {vehicles!.map(v => <option key={v.id} value={v.id}>{v.plate}</option>)}
+          </select>
+        )}
+        {(projects?.length ?? 0) > 0 && (
+          <select value={params.get('projectId') ?? ''} onChange={e => filter('projectId', e.target.value)}>
+            <option value="">Todos os projetos</option>
+            {projects!.map(p => <option key={p.id} value={p.id}>{p.name}{p.isActive ? '' : ' (arquivado)'}</option>)}
           </select>
         )}
         <select value={params.get('status') ?? ''} onChange={e => filter('status', e.target.value)}>
@@ -106,15 +139,27 @@ export default function Invoices() {
       <Card right={data?.sums && <span className="muted small">{data.total} documentos · Base {eur(data.sums.net)} · IVA {eur(data.sums.vat)} · <b>Total {eur(data.sums.total)}</b></span>}>
         <table className="table">
           <thead>
-            <tr><th>Data</th><th>Fornecedor</th><th>Documento</th><th>Categoria</th><th>Viatura</th><th className="num">IVA</th><th className="num">Total</th><th>e-Fatura</th><th>Estado</th><th>Origem</th></tr>
+            <tr><th>Data</th><th>Fornecedor</th><th>Documento</th><th>Categoria</th><th>Projeto</th><th>Viatura</th><th className="num">IVA</th><th className="num">Total</th><th>e-Fatura</th><th>Estado</th><th>Origem</th></tr>
           </thead>
           <tbody>
+            {sending.map(p => (
+              <tr key={p.key} className="row-pending">
+                <td>—</td>
+                <td>{p.name}<div className="muted small">a enviar…</div></td>
+                <td colSpan={7} className="muted small">{p.error ? <span className="bad-text">Falhou: {p.error}</span> : 'O documento vai ser lido (código QR + IA) assim que chegar ao servidor.'}</td>
+                <td>{p.error
+                  ? <button className="link" onClick={() => setSending(cur => cur.filter(x => x.key !== p.key))}>dispensar</button>
+                  : <span className="pill s-Pending"><span className="spinner" />A enviar</span>}</td>
+                <td className="small muted">Web</td>
+              </tr>
+            ))}
             {data?.items.map(i => (
               <tr key={i.id}>
                 <td>{date(i.issueDate)}</td>
-                <td><Link to={`/o/${orgId}/invoices/${i.id}`}>{i.supplierName ?? i.fileName ?? '—'}</Link><div className="muted small">{i.supplierNif} · {i.uploadedByName}</div></td>
+                <td><Link to={`/o/${orgId}/invoices/${i.id}`}>{i.supplierName ?? i.fileName ?? '—'}</Link>{(i.status === 'Pending' || i.status === 'Processing') && !i.supplierName && <div className="muted small">a ler o documento…</div>}<div className="muted small">{i.supplierNif} · {i.uploadedByName}</div></td>
                 <td className="small">{i.documentNumber ?? '—'}{i.duplicateOfId && <span className="pill s-Failed">duplicado</span>}</td>
                 <td>{i.categoryName ? <span className="tag" style={{ borderColor: i.categoryColor }}>{i.categoryName}</span> : <span className="muted">—</span>}</td>
+                <td>{i.projectName ? <span className="tag" style={{ borderColor: i.projectColor }}>{i.projectName}</span> : ''}</td>
                 <td>{i.vehiclePlate ?? ''}</td>
                 <td className="num">{eur(i.vatAmount)}</td>
                 <td className="num"><b>{eur(i.totalAmount)}</b></td>
@@ -123,7 +168,7 @@ export default function Invoices() {
                 <td className="small muted">{SOURCE_LABEL[i.source] ?? i.source}</td>
               </tr>
             ))}
-            {data?.items.length === 0 && <tr><td colSpan={10} className="center muted">Sem documentos neste período.</td></tr>}
+            {data?.items.length === 0 && sending.length === 0 && <tr><td colSpan={11} className="center muted">Sem documentos neste período.</td></tr>}
           </tbody>
         </table>
       </Card>

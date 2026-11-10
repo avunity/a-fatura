@@ -22,6 +22,7 @@ export default function Banks() {
   const [create, setCreate] = useState<{ bankName: string; alias: string; iban: string } | null>(null)
   const [result, setResult] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [warnings, setWarnings] = useState<string[]>([])
   const lm = lastMonth()
   const [period, setPeriod] = useState(lm)
 
@@ -35,12 +36,14 @@ export default function Banks() {
 
   async function upload(files: File[]) {
     if (!account || files.length === 0) return
-    setErr(null); setResult(null)
+    setErr(null); setResult(null); setWarnings([])
+    setResult(files[0].name.toLowerCase().endsWith('.pdf') ? 'A ler o PDF… (pode demorar até um minuto)' : null)
     const form = new FormData()
     form.append('file', files[0])
     try {
-      const r = await api.upload<{ import: Import }>(`/api/orgs/${orgId}/bank-accounts/${account.id}/statements`, form)
-      setResult(`${r.import.transactionsNew} movimentos novos, ${r.import.transactionsDuplicate} já existentes (ignorados). ${r.import.overlapWarning ?? ''}`)
+      const r = await api.upload<{ import: Import; method?: string; warnings?: string[] }>(`/api/orgs/${orgId}/bank-accounts/${account.id}/statements`, form)
+      setResult(`${r.method === 'IA' ? 'PDF lido pela IA. ' : r.method === 'Texto' ? 'PDF lido pelo texto. ' : ''}${r.import.transactionsNew} movimentos novos, ${r.import.transactionsDuplicate} já existentes (ignorados). ${r.import.overlapWarning ?? ''}`)
+      setWarnings(r.warnings ?? [])
       reload(); reloadTx(); reloadSug()
     } catch (e) { setErr((e as Error).message) }
   }
@@ -52,7 +55,7 @@ export default function Banks() {
 
   return (
     <Page title="Contas bancárias" actions={org?.access.canManage && <button className="primary" onClick={() => setCreate({ bankName: '', alias: '', iban: '' })}>+ Nova conta</button>}>
-      <p className="muted">Sem ligação ao banco: carregue os extratos em CSV. O sistema regista os períodos carregados por conta e ignora movimentos repetidos quando os extratos se sobrepõem.</p>
+      <p className="muted">Sem ligação ao banco: carregue os extratos em CSV ou PDF. O sistema regista os períodos carregados por conta e ignora movimentos repetidos quando os extratos se sobrepõem.</p>
       <div className="tabs">
         {data?.map(a => <button key={a.id} className={account?.id === a.id ? 'on' : ''} onClick={() => setSelected(a.id)}>{a.alias}<span className="muted small"> {a.bankName}</span></button>)}
       </div>
@@ -61,9 +64,11 @@ export default function Banks() {
         <>
           <div className="grid2">
             <Card title="Carregar extrato">
-              <Dropzone label="Extrato CSV" accept=".csv,text/csv" multiple={false} onFiles={upload} />
+              <Dropzone label="Extrato em CSV ou PDF" accept=".csv,text/csv,.pdf,application/pdf" multiple={false} onFiles={upload} />
+              <p className="small muted">PDF: o extrato é lido pela IA (qualquer banco) ou, sem IA, pelo texto do PDF. Os movimentos são validados contra os saldos.</p>
               <ErrorBox error={err} />
               {result && <div className="alert ok">{result}</div>}
+              {warnings.length > 0 && <div className="alert warn"><ul>{warnings.map(w => <li key={w}>{w}</li>)}</ul></div>}
             </Card>
             <Card title="Períodos carregados">
               <div className="timeline">

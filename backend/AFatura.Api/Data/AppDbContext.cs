@@ -11,6 +11,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<AccountantAssignment> AccountantAssignments => Set<AccountantAssignment>();
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
+    public DbSet<Project> Projects => Set<Project>();
     public DbSet<Supplier> Suppliers => Set<Supplier>();
     public DbSet<StoredFile> Files => Set<StoredFile>();
     public DbSet<Invoice> Invoices => Set<Invoice>();
@@ -56,6 +57,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         b.Entity<Category>(e => e.HasIndex(x => new { x.OrganizationId, x.Name }));
         b.Entity<Vehicle>(e => e.HasIndex(x => new { x.OrganizationId, x.Plate }).IsUnique());
+        b.Entity<Project>(e =>
+        {
+            e.HasIndex(x => new { x.OrganizationId, x.Name });
+            e.Property(x => x.Budget).HasPrecision(14, 2);
+        });
         b.Entity<Supplier>(e => e.HasIndex(x => new { x.OrganizationId, x.Nif }).IsUnique());
         b.Entity<StoredFile>(e => e.HasIndex(x => new { x.OrganizationId, x.Sha256 }));
 
@@ -75,6 +81,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasOne(x => x.File).WithMany().HasForeignKey(x => x.FileId);
             e.HasOne(x => x.Category).WithMany().HasForeignKey(x => x.CategoryId).OnDelete(DeleteBehavior.SetNull);
             e.HasOne(x => x.Vehicle).WithMany().HasForeignKey(x => x.VehicleId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.SetNull);
             e.HasOne(x => x.EFaturaRecord).WithMany().HasForeignKey(x => x.EFaturaRecordId).OnDelete(DeleteBehavior.SetNull);
         });
 

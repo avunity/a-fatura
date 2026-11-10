@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { api, type Category, type Invoice, type Vehicle } from '../api'
+import { api, type Category, type Invoice, type Project, type Vehicle } from '../api'
 import { useLoad } from '../session'
 import { Card, ErrorBox, Page, StatusPill, useOrgContext } from '../components/ui'
 import { dateTime, eur, pct, SOURCE_LABEL } from '../util'
@@ -12,6 +12,7 @@ export default function InvoiceDetail() {
   const { data: inv, reload, error } = useLoad(() => api.get<Invoice>(`/api/orgs/${orgId}/invoices/${id}`), [orgId, id])
   const { data: categories } = useLoad(() => api.get<Category[]>(`/api/orgs/${orgId}/categories`), [orgId])
   const { data: vehicles } = useLoad(() => api.get<Vehicle[]>(`/api/orgs/${orgId}/vehicles`), [orgId])
+  const { data: projects } = useLoad(() => api.get<Project[]>(`/api/orgs/${orgId}/projects`), [orgId])
   const [fileUrl, setFileUrl] = useState<string | null>(null)
   const [form, setForm] = useState<Partial<Invoice>>({})
   const [msg, setMsg] = useState<string | null>(null)
@@ -45,6 +46,7 @@ export default function InvoiceDetail() {
         documentType: form.documentType, documentNumber: form.documentNumber, atcud: form.atcud,
         issueDate: form.issueDate || null, netAmount: num(form.netAmount), vatAmount: num(form.vatAmount), totalAmount: num(form.totalAmount),
         categoryId: form.categoryId || null, vehicleId: form.vehicleId || null, clearVehicle: !form.vehicleId,
+        projectId: form.projectId || null, clearProject: !form.projectId,
         notes: form.notes, paidPersonally: form.paidPersonally,
       })
       setMsg('Guardado. A categoria/viatura escolhida fica memorizada para este fornecedor.')
@@ -104,6 +106,12 @@ export default function InvoiceDetail() {
                 <select value={form.vehicleId ?? ''} onChange={set('vehicleId')}>
                   <option value="">—</option>
                   {vehicles?.map(v => <option key={v.id} value={v.id}>{v.plate} {v.make ?? ''}</option>)}
+                </select>
+              </label>
+              <label className="span2">Projeto
+                <select value={form.projectId ?? ''} onChange={set('projectId')}>
+                  <option value="">Sem projeto</option>
+                  {projects?.filter(p => p.isActive || p.id === form.projectId).map(p => <option key={p.id} value={p.id}>{p.name}{p.code ? ` (${p.code})` : ''}</option>)}
                 </select>
               </label>
               <label className="span2">Notas<textarea value={form.notes ?? ''} onChange={set('notes')} rows={2} /></label>

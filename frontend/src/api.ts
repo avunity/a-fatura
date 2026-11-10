@@ -68,6 +68,7 @@ export type Invoice = {
   issueDate?: string; netAmount?: number; vatAmount?: number; totalAmount?: number; currency: string; vatLines: VatLine[]
   summary?: string; licensePlateDetected?: string; fuelLiters?: number; energyKwh?: number
   categoryId?: string; categoryName?: string; categoryColor?: string; vehicleId?: string; vehiclePlate?: string
+  projectId?: string; projectName?: string; projectColor?: string
   classificationConfidence?: number; classificationReason?: string
   collectedInEFatura: boolean; duplicateOfId?: string; hasValidQr: boolean; flags: string[]; processingError?: string
   paidPersonally: boolean; reimbursement: string; notes?: string; tags: string[]
@@ -79,4 +80,9 @@ export type Vehicle = {
   id: string; plate: string; make?: string; model?: string; fuelType: string; acquiredAt?: string; acquisitionValue?: number
   insuranceRenewal?: string; inspectionDue?: string; notes?: string; isActive: boolean
   costs: { category: string; total: number; liters: number; kwh: number }[]; yearTotal: number
+}
+export type Project = {
+  id: string; name: string; code?: string; clientName?: string; description?: string; color: string
+  budget?: number; startDate?: string; endDate?: string; isActive: boolean; createdAt: string
+  spent?: number; vat?: number; invoices?: number; lastExpense?: string; budgetUsed?: number
 }
