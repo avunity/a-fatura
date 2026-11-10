@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# A-Fatura — update from GitHub: backup → git pull → rebuild → health check
+# A-Fatura — update from GitHub: git pull → backup → rebuild → health check
+# (pull first: it doesn't touch running containers, and .env may reference compose files that only exist in the new version)
 set -euo pipefail
 cd "$(dirname "$0")/.."
-set -a; source .env; set +a
 
-./deploy/backup.sh
 git pull --ff-only
+set -a; source .env; set +a
+./deploy/backup.sh
 docker compose up -d --build
 
 for _ in $(seq 1 60); do
