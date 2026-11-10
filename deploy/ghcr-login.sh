@@ -1,12 +1,23 @@
 #!/usr/bin/env bash
-# docker login ghcr.io with a short-lived GitHub App installation token (valid 1h — regenerated on every update).
-# Needs in .env: GH_APP_ID and GH_APP_KEY (path to the app private key .pem). GH_APP_INSTALLATION_ID is optional
-# (discovered from the repository). The app needs "Packages: Read" and access to the repository.
+# docker login ghcr.io before pulling the images. Tries, in order:
+#   1. GitHub App (GH_APP_ID + GH_APP_KEY in .env) — short-lived installation token
+#   2. gh CLI already authenticated on the VPS (`gh auth token`) — needs the read:packages scope:
+#        gh auth refresh -h github.com -s read:packages
+#   3. nothing → keeps whatever `docker login ghcr.io` was done before (e.g. a PAT)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 set -a; source .env; set +a
 
-: "${GH_APP_ID:?GH_APP_ID não definido no .env}"
+if [ -z "${GH_APP_ID:-}" ]; then
+  if command -v gh >/dev/null && gh auth status -h github.com >/dev/null 2>&1; then
+    USER_LOGIN=$(gh api user --jq .login 2>/dev/null || echo x-access-token)
+    if gh auth token -h github.com | docker login ghcr.io -u "$USER_LOGIN" --password-stdin >/dev/null; then
+      echo "ghcr.io: login com o gh CLI ($USER_LOGIN) OK"; exit 0
+    fi
+    echo "ghcr.io recusou o token do gh — corre: gh auth refresh -h github.com -s read:packages"; exit 1
+  fi
+  echo "ghcr.io: sem GitHub App nem gh CLI — a usar o docker login existente"; exit 0
+fi
 : "${GH_APP_KEY:?GH_APP_KEY (caminho da chave .pem) não definido no .env}"
 REPO=${GH_REPO:-avunity/a-fatura}
 API=https://api.github.com
