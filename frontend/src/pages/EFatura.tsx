@@ -88,12 +88,17 @@ export default function EFatura() {
             ))}
           </div>
         </div>
+        <div className="ef-legend small">
+          <span><i className="ef-swatch ef-matched" />Com documento carregado</span>
+          <span><i className="ef-swatch ef-missing" />Em falta</span>
+          <span><i className="ef-swatch ef-ignored" />Ignorada</span>
+        </div>
         <div style={{ overflowX: 'auto' }}>
-          <table className="table">
+          <table className="table ef-table">
             <thead><tr><th>Data</th><th>Emitente</th><th>Documento</th><th className="num">IVA</th><th className="num">Total</th><th>Situação AT</th><th>Documento carregado</th><th></th></tr></thead>
             <tbody>
               {shown.map(r => (
-                <tr key={r.id} className={r.ignored && !r.matchedInvoiceId ? 'muted' : ''}>
+                <tr key={r.id} className={`ef-row ef-${stateOf(r)}`}>
                   <td>{date(r.issueDate)}</td>
                   <td>
                     {r.supplierName}<div className="muted small">{r.supplierNif}</div>

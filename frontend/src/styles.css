@@ -1,4 +1,5 @@
 :root {
+  --row-ok: #ecfdf3; --row-ok-bar: #22c55e; --row-ignored: #f1f5f9; --row-ignored-bar: #94a3b8; --row-missing-bar: #f59e0b;
   --bg: #f6f7f9; --panel: #fff; --text: #0f172a; --text-2: #475569; --muted: #64748b; --faint: #94a3b8;
   --line: #e2e8f0; --line-strong: #cbd5e1; --hover: #f1f5f9; --subtle: #f8fafc;
   --accent: #0f766e; --primary: #0f766e; --accent-soft: #99d5cf; --accent-bg: #f0fdfa; --chip: #ccfbf1; --chip-fg: #115e59;
@@ -12,6 +13,7 @@
   color-scheme: light;
 }
 :root[data-theme="dark"] {
+  --row-ok: rgba(34,197,94,.12); --row-ok-bar: #22c55e; --row-ignored: rgba(148,163,184,.08); --row-ignored-bar: #475569; --row-missing-bar: #d97706;
   --bg: #0b1220; --panel: #111a2b; --text: #e2e8f0; --text-2: #cbd5e1; --muted: #94a3b8; --faint: #64748b;
   --line: #1f2b40; --line-strong: #334155; --hover: #1a2538; --subtle: #0e1727;
   --accent: #2dd4bf; --primary: #0f9488; --accent-soft: #134e4a; --accent-bg: rgba(45,212,191,.12); --chip: #134e4a; --chip-fg: #99f6e4;
@@ -258,3 +260,19 @@ img.preview, iframe.preview { color-scheme: light; }
 .save-row .spacer { flex: 1; }
 .save-row.dirty { border-top: 1px dashed var(--warn-line); padding-top: 10px; }
 button.link.danger { color: var(--bad); }
+
+/* e-Fatura row states */
+.ef-table td:first-child { border-left: 4px solid transparent; }
+.ef-row.ef-matched td { background: var(--row-ok); }
+.ef-row.ef-matched td:first-child { border-left-color: var(--row-ok-bar); }
+.ef-row.ef-ignored td { background: var(--row-ignored); color: var(--muted); }
+.ef-row.ef-ignored td:first-child { border-left-color: var(--row-ignored-bar); }
+.ef-row.ef-ignored td .ok, .ef-row.ef-ignored td a { color: var(--muted); }
+.ef-row.ef-ignored td:not(.row-actions) { text-decoration: none; }
+.ef-row.ef-missing td:first-child { border-left-color: var(--row-missing-bar); }
+.ef-legend { display: flex; gap: 16px; flex-wrap: wrap; color: var(--muted); }
+.ef-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.ef-swatch { width: 14px; height: 14px; border-radius: 4px; display: inline-block; border-left: 4px solid; }
+.ef-swatch.ef-matched { background: var(--row-ok); border-color: var(--row-ok-bar); }
+.ef-swatch.ef-missing { background: var(--panel); border-color: var(--row-missing-bar); box-shadow: inset 0 0 0 1px var(--line); }
+.ef-swatch.ef-ignored { background: var(--row-ignored); border-color: var(--row-ignored-bar); }
