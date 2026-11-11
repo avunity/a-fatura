@@ -59,6 +59,7 @@ export type Me = { id: string; email: string; name: string; role: 'User' | 'Acco
 export type OrgInfo = {
   id: string; name: string; nif?: string; address?: string; email?: string; type: 'Company' | 'Individual'; submissionDeadlineDay: number
   access: { canSeeAll: boolean; canManage: boolean; isAccountant: boolean; isAdmin: boolean; role?: string }
+  activeMembers: number
   accountants: { accountantUserId: string; name: string; email: string }[]
 }
 export type SubDocument = { supplierNif: string; documentType?: string; documentNumber?: string; atcud?: string; issueDate?: string; total?: number; vat?: number }

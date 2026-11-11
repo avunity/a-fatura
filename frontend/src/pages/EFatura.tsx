@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api, type Invoice } from '../api'
 import { useLoad } from '../session'
-import { Card, Dropzone, ErrorBox, Modal, Page, PeriodPicker, Stat } from '../components/ui'
+import { Card, Dropzone, ErrorBox, Modal, Page, PeriodPicker, Stat, useOrgContext } from '../components/ui'
 import { date, dateTime, eur, lastMonth, pct } from '../util'
 
 type Import = { id: string; fileName: string; periodStart: string; periodEnd: string; recordsTotal: number; recordsNew: number; recordsAlreadyKnown: number; recordsMatched: number; createdAt: string }
@@ -17,6 +17,9 @@ const stateOf = (r: Rec): State => (r.matchedInvoiceId ? 'matched' : r.ignored ?
 
 export default function EFatura() {
   const { orgId } = useParams()
+  const { org } = useOrgContext()
+  // "Pedir documento" goes from the accountant to the client's inbox: only when there is a client account to receive it.
+  const canRequest = !!org && (org.access.isAccountant || org.access.isAdmin) && org.activeMembers > 0
   const lm = lastMonth()
   const [period, setPeriod] = useState<{ year: number; month?: number }>(lm)
   const [state, setState] = useState<State>('all')
@@ -107,7 +110,8 @@ export default function EFatura() {
                       </>
                     ) : r.ignored ? <span className="pill">Ignorada</span>
                       : r.requested ? <span className="muted">pedido enviado</span>
-                      : <button onClick={() => run(() => api.post(`/api/orgs/${orgId}/efatura/records/${r.id}/request`))} title="Cria um pedido para o cliente carregar este documento e envia-lhe uma mensagem">Pedir documento</button>}
+                      : canRequest ? <button onClick={() => run(() => api.post(`/api/orgs/${orgId}/efatura/records/${r.id}/request`))} title="Cria um pedido para o cliente carregar este documento e envia-lhe uma mensagem na inbox">Pedir documento</button>
+                      : <span className="muted">em falta</span>}
                   </td>
                   <td className="row-actions">
                     <button className="link" onClick={() => setNote({ rec: r, comment: r.comment ?? '', ignored: r.ignored })}>{r.comment || r.ignored ? 'Editar nota' : 'Comentar / ignorar'}</button>

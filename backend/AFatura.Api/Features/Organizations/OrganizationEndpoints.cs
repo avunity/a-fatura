@@ -22,12 +22,14 @@ public static class OrganizationEndpoints
         {
             var a = await access.GetAsync(orgId, ct);
             var org = await db.Organizations.AsNoTracking().FirstAsync(o => o.Id == orgId, ct);
+            var activeMembers = await db.Memberships.CountAsync(m => m.OrganizationId == orgId && m.IsActive && m.User.IsActive, ct);
             var accountants = await db.AccountantAssignments.Where(x => x.OrganizationId == orgId)
                 .Select(x => new { x.AccountantUserId, x.AccountantUser.Name, x.AccountantUser.Email }).ToListAsync(ct);
             return Results.Ok(new
             {
                 org.Id, org.Name, org.Nif, org.Address, org.Email, Type = org.Type.ToString(), org.SubmissionDeadlineDay,
                 Access = new { a.CanSeeAll, a.CanManage, a.IsAccountant, a.IsAdmin, Role = a.MemberRole?.ToString() },
+                activeMembers,
                 accountants
             });
         });

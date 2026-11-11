@@ -269,7 +269,10 @@ public static class EFaturaEndpoints
 
         g.MapPost("records/{id:guid}/request", async (Guid orgId, Guid id, AccessService access, CurrentUser me, AppDbContext db, CancellationToken ct) =>
         {
-            var a = await access.RequireSeeAllAsync(orgId, ct);
+            // A request only makes sense from the accountant to the client, and only if someone on the client side can receive it.
+            var a = await access.RequireAccountantAsync(orgId, ct);
+            if (!await db.Memberships.AnyAsync(m => m.OrganizationId == orgId && m.IsActive && m.User.IsActive, ct))
+                throw new AppException(400, "O cliente não tem nenhuma conta ativa na A-Fatura para receber o pedido");
             var rec = await db.EFaturaRecords.FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == orgId, ct)
                       ?? throw new AppException(404, "Registo não encontrado");
             var description = $"Falta o documento {rec.DocumentNumber} de {rec.SupplierName ?? rec.SupplierNif} ({rec.IssueDate:dd/MM/yyyy}, {rec.Total:0.00} €)";
