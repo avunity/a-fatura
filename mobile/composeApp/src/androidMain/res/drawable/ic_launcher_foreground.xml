@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A-Fatura: white receipt with a euro sign (fits the 66dp adaptive-icon safe zone) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M42,28H66Q70,28 70,32V78L66,74L62,78L58,74L54,78L50,74L46,78L42,74L38,78V32Q38,28 42,28Z" />
+    <path android:strokeColor="#0F766E" android:strokeWidth="3.6" android:strokeLineCap="round"
+        android:pathData="M63.57,40.93A10,10 0,1 0,63.57 55.07" />
+    <path android:strokeColor="#0F766E" android:strokeWidth="3.2" android:strokeLineCap="round"
+        android:pathData="M45.5,45.5H57.5M45.5,50.5H57.5" />
+    <path android:strokeColor="#99D5CF" android:strokeWidth="2.6" android:strokeLineCap="round"
+        android:pathData="M45,62H63M45,67H57" />
+</vector>
