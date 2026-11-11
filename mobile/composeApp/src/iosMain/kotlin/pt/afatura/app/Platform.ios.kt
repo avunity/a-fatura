@@ -5,8 +5,12 @@ package pt.afatura.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.useContents
 import kotlinx.cinterop.usePinned
+import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSData
+import platform.Foundation.NSError
+import platform.Foundation.NSMutableData
 import platform.Foundation.NSDate
 import platform.Foundation.NSURL
 import platform.Foundation.dataWithContentsOfURL
@@ -15,6 +19,9 @@ import platform.UIKit.UIApplication
 import platform.UIKit.UIDocumentPickerDelegateProtocol
 import platform.UIKit.UIDocumentPickerViewController
 import platform.UIKit.UIImage
+import platform.UIKit.UIGraphicsBeginPDFContextToData
+import platform.UIKit.UIGraphicsBeginPDFPageWithInfo
+import platform.UIKit.UIGraphicsEndPDFContext
 import platform.UIKit.UIImageJPEGRepresentation
 import platform.UIKit.UIImagePickerController
 import platform.UIKit.UIImagePickerControllerDelegateProtocol
@@ -23,6 +30,9 @@ import platform.UIKit.UIImagePickerControllerSourceType
 import platform.UIKit.UINavigationControllerDelegateProtocol
 import platform.UIKit.UIViewController
 import platform.UniformTypeIdentifiers.UTTypeImage
+import platform.VisionKit.VNDocumentCameraScan
+import platform.VisionKit.VNDocumentCameraViewController
+import platform.VisionKit.VNDocumentCameraViewControllerDelegateProtocol
 import platform.UniformTypeIdentifiers.UTTypePDF
 import platform.darwin.NSObject
 import platform.posix.memcpy
@@ -57,6 +67,46 @@ private class CameraDelegate(val onResult: (CapturedFile?) -> Unit) : NSObject()
     }
 }
 
+/**
+ * VisionKit document camera: detects the invoice edges, crops, fixes perspective and enhances the image.
+ * One page → JPEG; several pages → a single PDF.
+ */
+private class ScannerDelegate(val onResult: (CapturedFile?) -> Unit) : NSObject(), VNDocumentCameraViewControllerDelegateProtocol {
+    override fun documentCameraViewController(controller: VNDocumentCameraViewController, didFinishWithScan: VNDocumentCameraScan) {
+        controller.dismissViewControllerAnimated(true, null)
+        val scan = didFinishWithScan
+        val count = scan.pageCount.toInt()
+        if (count == 0) return onResult(null)
+        if (count == 1) {
+            val data = UIImageJPEGRepresentation(scan.imageOfPageAtIndex(0u), 0.85)
+            onResult(data?.let { CapturedFile(it.toByteArray(), "fatura-${stamp()}.jpg", "image/jpeg") })
+            return
+        }
+        val pdf = NSMutableData()
+        UIGraphicsBeginPDFContextToData(pdf, CGRectMake(0.0, 0.0, 612.0, 792.0), null)
+        for (i in 0 until count) {
+            val image = scan.imageOfPageAtIndex(i.toULong())
+            image.size.useContents {
+                val rect = CGRectMake(0.0, 0.0, width, height)
+                UIGraphicsBeginPDFPageWithInfo(rect, null)
+                image.drawInRect(rect)
+            }
+        }
+        UIGraphicsEndPDFContext()
+        onResult(CapturedFile(pdf.toByteArray(), "fatura-${stamp()}.pdf", "application/pdf"))
+    }
+
+    override fun documentCameraViewControllerDidCancel(controller: VNDocumentCameraViewController) {
+        controller.dismissViewControllerAnimated(true, null)
+        onResult(null)
+    }
+
+    override fun documentCameraViewController(controller: VNDocumentCameraViewController, didFailWithError: NSError) {
+        controller.dismissViewControllerAnimated(true, null)
+        onResult(null)
+    }
+}
+
 private class PickerDelegate(val onResult: (CapturedFile?) -> Unit) : NSObject(), UIDocumentPickerDelegateProtocol {
     override fun documentPicker(controller: UIDocumentPickerViewController, didPickDocumentsAtURLs: List<*>) {
         val url = didPickDocumentsAtURLs.firstOrNull() as? NSURL ?: return onResult(null)
@@ -75,16 +125,23 @@ private class PickerDelegate(val onResult: (CapturedFile?) -> Unit) : NSObject()
 actual fun rememberDocumentCapture(onResult: (CapturedFile?) -> Unit): DocumentCapture {
     // Delegates are held strongly here: UIKit keeps only weak references.
     val camera = remember { CameraDelegate(onResult) }
+    val scanner = remember { ScannerDelegate(onResult) }
     val picker = remember { PickerDelegate(onResult) }
     return remember {
         object : DocumentCapture {
             override fun takePhoto() {
-                val c = UIImagePickerController()
-                c.sourceType = if (UIImagePickerController.isSourceTypeAvailable(UIImagePickerControllerSourceType.UIImagePickerControllerSourceTypeCamera))
-                    UIImagePickerControllerSourceType.UIImagePickerControllerSourceTypeCamera
-                else UIImagePickerControllerSourceType.UIImagePickerControllerSourceTypePhotoLibrary
-                c.delegate = camera
-                topController()?.presentViewController(c, true, null)
+                val hasCamera = UIImagePickerController.isSourceTypeAvailable(UIImagePickerControllerSourceType.UIImagePickerControllerSourceTypeCamera)
+                if (hasCamera) {
+                    val c = VNDocumentCameraViewController()
+                    c.delegate = scanner
+                    topController()?.presentViewController(c, true, null)
+                } else {
+                    // Simulator / no camera: pick from the photo library
+                    val c = UIImagePickerController()
+                    c.sourceType = UIImagePickerControllerSourceType.UIImagePickerControllerSourceTypePhotoLibrary
+                    c.delegate = camera
+                    topController()?.presentViewController(c, true, null)
+                }
             }
 
             override fun pickFile() {

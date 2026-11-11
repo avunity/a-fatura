@@ -52,8 +52,50 @@ public class QrDecoder(ILogger<QrDecoder> log)
             results = TryDecode(resized);
             if (results.Count > 0) return results;
         }
+
+        // Dark / low-contrast photos (thermal receipts, poor light): grayscale + contrast stretch, then retry.
+        foreach (var contrast in new[] { 1.6f, 2.4f })
+        {
+            results = TryDecodeEnhanced(source, contrast);
+            if (results.Count > 0) return results;
+        }
         return results;
     }
+
+    /// <summary>Luminance with a contrast stretch around the image's mean brightness, decoded as an 8-bit gray image.</summary>
+    private static List<string> TryDecodeEnhanced(SKBitmap source, float contrast)
+    {
+        using var bgra = source.ColorType == SKColorType.Bgra8888 ? source.Copy() : source.Copy(SKColorType.Bgra8888);
+        if (bgra == null) return new List<string>();
+        var px = bgra.Bytes;
+        int w = bgra.Width, h = bgra.Height, stride = bgra.RowBytes;
+        var gray = new byte[w * h];
+        long sum = 0;
+        for (var y = 0; y < h; y++)
+        for (var x = 0; x < w; x++)
+        {
+            var o = y * stride + x * 4;
+            var l = (px[o + 2] * 299 + px[o + 1] * 587 + px[o] * 114) / 1000;
+            gray[y * w + x] = (byte)l;
+            sum += l;
+        }
+        var mean = sum / (float)(w * h);
+        for (var i = 0; i < gray.Length; i++)
+            gray[i] = (byte)Math.Clamp((gray[i] - mean) * contrast + 128f, 0f, 255f);
+
+        var reader = NewReader();
+        var lum = new RGBLuminanceSource(gray, w, h, RGBLuminanceSource.BitmapFormat.Gray8);
+        var many = reader.DecodeMultiple(lum);
+        if (many is { Length: > 0 }) return many.Select(r => r.Text).Where(t => !string.IsNullOrWhiteSpace(t)).ToList();
+        var single = reader.Decode(lum);
+        return single?.Text is { Length: > 0 } t ? new List<string> { t } : new List<string>();
+    }
+
+    private static BarcodeReaderGeneric NewReader() => new()
+    {
+        AutoRotate = true,
+        Options = new DecodingOptions { TryHarder = true, TryInverted = true, PossibleFormats = [BarcodeFormat.QR_CODE] }
+    };
 
     private static List<string> TryDecode(SKBitmap bmp)
     {

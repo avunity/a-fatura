@@ -37,6 +37,7 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)
             implementation(libs.ktor.client.okhttp)
+            implementation(libs.mlkit.document.scanner)
         }
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)

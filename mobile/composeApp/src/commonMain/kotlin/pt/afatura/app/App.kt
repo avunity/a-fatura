@@ -28,6 +28,7 @@ import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DirectionsCar
+import androidx.compose.material.icons.outlined.DocumentScanner
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.HourglassTop
@@ -366,11 +367,11 @@ private fun SendTab(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     Box(Modifier.size(56.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Outlined.CameraAlt, null, tint = Color.White, modifier = Modifier.size(30.dp))
+                        Icon(Icons.Outlined.DocumentScanner, null, tint = Color.White, modifier = Modifier.size(30.dp))
                     }
                     Column {
-                        Text("Fotografar fatura", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp)
-                        Text("Lemos o código QR e os dados automaticamente", color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp)
+                        Text("Digitalizar fatura", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                        Text("Deteta a fatura, corta o fundo e melhora a imagem", color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp)
                     }
                 }
             }
