@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { useLoad } from '../session'
 import { Card, Modal, Page, PeriodPicker, Stat } from '../components/ui'
 import { date, eur, lastMonth, MONTHS, pct } from '../util'
+import { ColumnPicker, DataTable, useTableLayout, type Col } from '../components/DataTable'
 
 type Row = {
   organizationId: string; name: string; nif?: string; type: string
@@ -27,6 +28,28 @@ export default function Accountant() {
 
   const rows = [...(data?.clients ?? [])].sort((a, b) =>
     sort === 'name' ? a.name.localeCompare(b.name) : sort === 'missing' ? b.missing - a.missing : (b.score ?? -1) - (a.score ?? -1))
+  const columns = useMemo<Col<Row>[]>(() => [
+    { id: 'client', label: 'Cliente', width: 240, locked: true, render: r => <><Link to={`/o/${r.organizationId}`}>{r.name}</Link><div className="muted small">{r.nif} · {r.type === 'Individual' ? 'Particular' : 'Empresa'}</div></> },
+    { id: 'score', label: 'Pontuação', width: 100, render: r => <span className={`pill ${tone(r.score)}`}>{r.score ?? '—'}</span> },
+    { id: 'docs', label: 'Docs', width: 70, className: 'num', render: r => r.invoices },
+    { id: 'total', label: 'Total', width: 110, className: 'num', render: r => eur(r.total) },
+    { id: 'vat', label: 'IVA', width: 100, className: 'num', defaultVisible: false, render: r => eur(r.vat) },
+    { id: 'efatura', label: 'e-Fatura', width: 170, render: r => <>{r.eFaturaMatched}/{r.eFaturaRecords}{r.missing > 0 && <Link to={`/o/${r.organizationId}/efatura`} className="bad-text"> ({r.missing} em falta)</Link>}</> },
+    { id: 'coverage', label: 'Cobertura', width: 95, render: r => pct(r.coverage) },
+    { id: 'onTime', label: 'No prazo', width: 90, render: r => pct(r.onTime) },
+    { id: 'review', label: 'Rever', width: 75, render: r => r.needsReview > 0 ? <Link to={`/o/${r.organizationId}/invoices?status=NeedsReview&year=${p.year}&month=${p.month}`}>{r.needsReview}</Link> : 0 },
+    { id: 'last', label: 'Último envio', width: 110, className: 'small', render: r => date(r.lastUpload) },
+    { id: 'efUntil', label: 'e-Fatura até', width: 120, className: 'small', render: r => r.eFaturaCoveredUntil ? date(r.eFaturaCoveredUntil) : <span className="warn-text">nunca importado</span> },
+    {
+      id: 'flags', label: 'Avisos', width: 110, className: 'small',
+      render: r => <>
+        {r.periodClosed && '🔒 '}
+        {r.unreadMessages > 0 && <Link to={`/o/${r.organizationId}/messages`}>✉️ {r.unreadMessages}</Link>}
+        {r.openRequests > 0 && <span title="Pedidos de documentos em aberto"> 📄 {r.openRequests}</span>}
+      </>,
+    },
+  ], [p.year, p.month])
+  const layout = useTableLayout('accountant-clients', columns)
   const toggle = (id: string) => setSelected(s => (s.includes(id) ? s.filter(x => x !== id) : [...s, id]))
   const monthName = `${MONTHS[p.month - 1]} ${p.year}`
 
@@ -59,33 +82,11 @@ export default function Accountant() {
         </Card>
       </div>
 
-      <Card title={`Clientes · ${monthName}`} right={<select value={sort} onChange={e => setSort(e.target.value as typeof sort)}><option value="score">Ordenar por pontuação</option><option value="missing">Por documentos em falta</option><option value="name">Por nome</option></select>}>
-        <table className="table">
-          <thead><tr>
-            <th><input type="checkbox" checked={selected.length === rows.length && rows.length > 0} onChange={e => setSelected(e.target.checked ? rows.map(r => r.organizationId) : [])} /></th>
-            <th>Cliente</th><th>Pontuação</th><th>Docs</th><th className="num">Total</th><th>e-Fatura</th><th>Cobertura</th><th>No prazo</th><th>Rever</th><th>Último envio</th><th>e-Fatura até</th><th></th>
-          </tr></thead>
-          <tbody>{rows.map(r => (
-            <tr key={r.organizationId}>
-              <td><input type="checkbox" checked={selected.includes(r.organizationId)} onChange={() => toggle(r.organizationId)} /></td>
-              <td><Link to={`/o/${r.organizationId}`}>{r.name}</Link><div className="muted small">{r.nif} · {r.type === 'Individual' ? 'Particular' : 'Empresa'}</div></td>
-              <td><span className={`pill ${tone(r.score)}`}>{r.score ?? '—'}</span></td>
-              <td>{r.invoices}</td>
-              <td className="num">{eur(r.total)}</td>
-              <td>{r.eFaturaMatched}/{r.eFaturaRecords}{r.missing > 0 && <Link to={`/o/${r.organizationId}/efatura`} className="bad-text"> ({r.missing} em falta)</Link>}</td>
-              <td>{pct(r.coverage)}</td>
-              <td>{pct(r.onTime)}</td>
-              <td>{r.needsReview > 0 ? <Link to={`/o/${r.organizationId}/invoices?status=NeedsReview&year=${p.year}&month=${p.month}`}>{r.needsReview}</Link> : 0}</td>
-              <td className="small">{date(r.lastUpload)}</td>
-              <td className="small">{r.eFaturaCoveredUntil ? date(r.eFaturaCoveredUntil) : <span className="warn-text">nunca importado</span>}</td>
-              <td className="small">
-                {r.periodClosed && '🔒 '}
-                {r.unreadMessages > 0 && <Link to={`/o/${r.organizationId}/messages`}>✉️ {r.unreadMessages}</Link>}
-                {r.openRequests > 0 && <span title="Pedidos de documentos em aberto"> 📄 {r.openRequests}</span>}
-              </td>
-            </tr>))}
-          </tbody>
-        </table>
+      <Card title={`Clientes · ${monthName}`} right={<div className="list-toolbar"><select value={sort} onChange={e => setSort(e.target.value as typeof sort)}><option value="score">Ordenar por pontuação</option><option value="missing">Por documentos em falta</option><option value="name">Por nome</option></select><ColumnPicker layout={layout} /></div>}>
+<DataTable layout={layout} rows={rows} rowKey={r => r.organizationId}
+          leadingHeader={<input type="checkbox" checked={selected.length === rows.length && rows.length > 0} onChange={e => setSelected(e.target.checked ? rows.map(r => r.organizationId) : [])} />}
+          leadingCell={r => <input type="checkbox" checked={selected.includes(r.organizationId)} onChange={() => toggle(r.organizationId)} />}
+          empty="Sem clientes associados." />
         <p className="small muted">Pontuação = 50% cobertura do e-Fatura + 25% documentos sem pendentes de revisão + 25% enviados dentro do prazo definido pelo cliente.</p>
       </Card>
 

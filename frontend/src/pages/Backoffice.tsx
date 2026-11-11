@@ -4,6 +4,7 @@ import { api } from '../api'
 import { useLoad } from '../session'
 import { Bars, Card, ErrorBox, Modal, Page, Stat } from '../components/ui'
 import { date, dateTime } from '../util'
+import { ColumnPicker, DataTable, useTableLayout, type Col } from '../components/DataTable'
 
 type Stats = {
   users: { role: string; count: number }[]; organizations: { type: string; count: number }[]; invoices: number
@@ -23,6 +24,30 @@ export default function Backoffice() {
   const [assign, setAssign] = useState<Org | null>(null)
   const [info, setInfo] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const orgColumns: Col<Org>[] = [
+    { id: 'name', label: 'Entidade', width: 240, locked: true, render: o => <><Link to={`/o/${o.id}`}>{o.name}</Link><div className="muted small">{o.nif}</div></> },
+    { id: 'type', label: 'Tipo', width: 110, render: o => o.type },
+    { id: 'members', label: 'Membros', width: 90, className: 'num', render: o => o.members },
+    { id: 'invoices', label: 'Docs', width: 80, className: 'num', render: o => o.invoices },
+    { id: 'last', label: 'Último envio', width: 150, className: 'small', render: o => dateTime(o.lastUpload) },
+    { id: 'created', label: 'Criada', width: 110, className: 'small', defaultVisible: false, render: o => date(o.createdAt) },
+    { id: 'accountants', label: 'Contabilista', width: 220, className: 'small', render: o => <>{o.accountants.map(a => a.name).join(', ') || '—'} <button className="link" onClick={() => setAssign(o)}>associar</button></> },
+    { id: 'actions', label: '', width: 100, render: o => <button className="link" onClick={async () => { await api.put(`/api/backoffice/organizations/${o.id}`, { isActive: !o.isActive }); reloadOrgs() }}>{o.isActive ? 'Suspender' : 'Reativar'}</button> },
+  ]
+  const userColumns: Col<User>[] = [
+    { id: 'name', label: 'Nome', width: 220, locked: true, render: u => <>{u.name}<div className="muted small">{u.email}</div></> },
+    { id: 'role', label: 'Perfil', width: 170, render: u => <>{u.role}{u.role === 'Accountant' && <span className="muted small"> · {u.clients} clientes</span>}</> },
+    { id: 'orgs', label: 'Entidades', width: 280, className: 'small', render: u => u.organizations.map(o => `${o.name} (${o.role})`).join(', ') },
+    { id: 'login', label: 'Último login', width: 150, className: 'small', render: u => dateTime(u.lastLoginAt) },
+    {
+      id: 'actions', label: '', width: 230, render: u => <>
+        <button className="link" onClick={async () => { await api.put(`/api/backoffice/users/${u.id}`, { isActive: !u.isActive }); reloadUsers() }}>{u.isActive ? 'Bloquear' : 'Desbloquear'}</button>
+        <button className="link" onClick={async () => { const r = await api.put<{ tempPassword: string }>(`/api/backoffice/users/${u.id}`, { resetPassword: true }); setInfo(`Nova palavra-passe temporária de ${u.email}: ${r.tempPassword}`) }}>Repor palavra-passe</button>
+      </>,
+    },
+  ]
+  const orgLayout = useTableLayout('backoffice-orgs', orgColumns)
+  const userLayout = useTableLayout('backoffice-users', userColumns)
   const accountants = users?.filter(u => u.role === 'Accountant') ?? []
   const count = (arr: { count: number }[] | undefined) => arr?.reduce((s, x) => s + x.count, 0) ?? 0
 
@@ -52,38 +77,14 @@ export default function Backoffice() {
       )}
 
       {tab === 'orgs' && (
-        <Card>
-          <table className="table">
-            <thead><tr><th>Entidade</th><th>Tipo</th><th>Membros</th><th>Docs</th><th>Último envio</th><th>Contabilista</th><th></th></tr></thead>
-            <tbody>{orgs?.map(o => (
-              <tr key={o.id} className={o.isActive ? '' : 'muted'}>
-                <td><Link to={`/o/${o.id}`}>{o.name}</Link><div className="muted small">{o.nif}</div></td>
-                <td>{o.type}</td><td>{o.members}</td><td>{o.invoices}</td><td className="small">{dateTime(o.lastUpload)}</td>
-                <td className="small">{o.accountants.map(a => a.name).join(', ') || '—'} <button className="link" onClick={() => setAssign(o)}>associar</button></td>
-                <td><button className="link" onClick={async () => { await api.put(`/api/backoffice/organizations/${o.id}`, { isActive: !o.isActive }); reloadOrgs() }}>{o.isActive ? 'Suspender' : 'Reativar'}</button></td>
-              </tr>))}
-            </tbody>
-          </table>
+        <Card right={<ColumnPicker layout={orgLayout} />}>
+          <DataTable layout={orgLayout} rows={orgs ?? []} rowKey={o => o.id} rowClassName={o => (o.isActive ? '' : 'muted')} empty="Sem entidades." />
         </Card>
       )}
 
       {tab === 'users' && (
-        <Card right={<button className="primary" onClick={() => setNewUser({ email: '', name: '', role: 'Accountant' })}>+ Criar contabilista / admin</button>}>
-          <table className="table">
-            <thead><tr><th>Nome</th><th>Perfil</th><th>Entidades</th><th>Último login</th><th></th></tr></thead>
-            <tbody>{users?.map(u => (
-              <tr key={u.id} className={u.isActive ? '' : 'muted'}>
-                <td>{u.name}<div className="muted small">{u.email}</div></td>
-                <td>{u.role}{u.role === 'Accountant' && <span className="muted small"> · {u.clients} clientes</span>}</td>
-                <td className="small">{u.organizations.map(o => `${o.name} (${o.role})`).join(', ')}</td>
-                <td className="small">{dateTime(u.lastLoginAt)}</td>
-                <td>
-                  <button className="link" onClick={async () => { await api.put(`/api/backoffice/users/${u.id}`, { isActive: !u.isActive }); reloadUsers() }}>{u.isActive ? 'Bloquear' : 'Desbloquear'}</button>
-                  <button className="link" onClick={async () => { const r = await api.put<{ tempPassword: string }>(`/api/backoffice/users/${u.id}`, { resetPassword: true }); setInfo(`Nova palavra-passe temporária de ${u.email}: ${r.tempPassword}`) }}>Repor palavra-passe</button>
-                </td>
-              </tr>))}
-            </tbody>
-          </table>
+        <Card right={<div className="list-toolbar"><button className="primary" onClick={() => setNewUser({ email: '', name: '', role: 'Accountant' })}>+ Criar contabilista / admin</button><ColumnPicker layout={userLayout} /></div>}>
+          <DataTable layout={userLayout} rows={users ?? []} rowKey={u => u.id} rowClassName={u => (u.isActive ? '' : 'muted')} empty="Sem utilizadores." />
         </Card>
       )}
 

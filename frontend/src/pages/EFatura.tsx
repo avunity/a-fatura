@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api, type Invoice } from '../api'
 import { useLoad } from '../session'
 import { Card, Dropzone, ErrorBox, Modal, Page, PeriodPicker, Stat, useOrgContext } from '../components/ui'
 import { date, dateTime, eur, lastMonth, pct } from '../util'
+import { ColumnPicker, DataTable, useTableLayout, type Col } from '../components/DataTable'
 
 type Import = { id: string; fileName: string; periodStart: string; periodEnd: string; recordsTotal: number; recordsNew: number; recordsAlreadyKnown: number; recordsMatched: number; createdAt: string }
 type Rec = {
@@ -50,6 +51,42 @@ export default function EFatura() {
 
   const run = async (fn: () => Promise<unknown>) => { setErr(null); try { await fn(); await reload() } catch (e) { setErr((e as Error).message) } }
 
+  const columns = useMemo<Col<Rec>[]>(() => [
+    { id: 'date', label: 'Data', width: 100, render: r => date(r.issueDate) },
+    {
+      id: 'supplier', label: 'Emitente', width: 260, locked: true,
+      render: r => <>{r.supplierName}<div className="muted small">{r.supplierNif}</div>{r.comment && <div className="comment">💬 {r.comment}</div>}</>,
+    },
+    { id: 'document', label: 'Documento', width: 170, className: 'small', render: r => <>{r.documentNumber}<div className="muted">{r.atcud}</div></> },
+    { id: 'type', label: 'Tipo', width: 110, className: 'small', defaultVisible: false, render: r => r.documentType ?? '' },
+    { id: 'vat', label: 'IVA', width: 90, className: 'num', render: r => eur(r.vat) },
+    { id: 'total', label: 'Total', width: 100, className: 'num', render: r => eur(r.total) },
+    { id: 'atStatus', label: 'Situação AT', width: 110, className: 'small', render: r => r.atStatus ?? '' },
+    {
+      id: 'doc', label: 'Documento carregado', width: 230, className: 'small',
+      render: r => r.matchedInvoiceId ? (
+        <>
+          <a href={`/o/${orgId}/invoices/${r.matchedInvoiceId}`} className="ok">✓ {r.matchedInvoiceLabel ?? 'carregado'}</a>
+          {r.matchedInvoiceMulti && <span className="pill" title="Este documento contém várias faturas">várias faturas</span>}
+        </>
+      ) : r.ignored ? <span className="pill">Ignorada</span>
+        : r.requested ? <span className="muted">pedido enviado</span>
+        : canRequest ? <button onClick={() => run(() => api.post(`/api/orgs/${orgId}/efatura/records/${r.id}/request`))} title="Cria um pedido para o cliente carregar este documento e envia-lhe uma mensagem na inbox">Pedir documento</button>
+        : <span className="muted">em falta</span>,
+    },
+    {
+      id: 'actions', label: 'Ações', width: 190, className: 'row-actions',
+      render: r => <>
+        <button className="link" onClick={() => setNote({ rec: r, comment: r.comment ?? '', ignored: r.ignored })}>{r.comment || r.ignored ? 'Editar nota' : 'Comentar / ignorar'}</button>
+        {r.matchedInvoiceId
+          ? <button className="link" onClick={() => confirm('Desassociar este documento desta linha?') && run(() => api.post(`/api/orgs/${orgId}/efatura/records/${r.id}/link`, { invoiceId: null }))}>Desassociar</button>
+          : <button className="link" onClick={() => setLinking(r)}>Associar documento</button>}
+      </>,
+    },
+    { id: 'updated', label: 'Atualizado', width: 130, className: 'small muted', defaultVisible: false, render: r => dateTime(r.updatedAt) },
+  ], [orgId, canRequest]) // eslint-disable-line react-hooks/exhaustive-deps
+  const layout = useTableLayout('efatura', columns)
+
   const all = records ?? []
   const counts = { all: all.length, missing: all.filter(r => stateOf(r) === 'missing').length, matched: all.filter(r => stateOf(r) === 'matched').length, ignored: all.filter(r => r.ignored && !r.matchedInvoiceId).length }
   const shown = state === 'all' ? all : all.filter(r => stateOf(r) === state)
@@ -87,49 +124,15 @@ export default function EFatura() {
               <button key={k} className={state === k ? 'on' : ''} onClick={() => setState(k)}>{l} <span className="muted small">{counts[k]}</span></button>
             ))}
           </div>
+          <ColumnPicker layout={layout} />
         </div>
         <div className="ef-legend small">
           <span><i className="ef-swatch ef-matched" />Com documento carregado</span>
           <span><i className="ef-swatch ef-missing" />Em falta</span>
           <span><i className="ef-swatch ef-ignored" />Ignorada</span>
         </div>
-        <div style={{ overflowX: 'auto' }}>
-          <table className="table ef-table">
-            <thead><tr><th>Data</th><th>Emitente</th><th>Documento</th><th className="num">IVA</th><th className="num">Total</th><th>Situação AT</th><th>Documento carregado</th><th></th></tr></thead>
-            <tbody>
-              {shown.map(r => (
-                <tr key={r.id} className={`ef-row ef-${stateOf(r)}`}>
-                  <td>{date(r.issueDate)}</td>
-                  <td>
-                    {r.supplierName}<div className="muted small">{r.supplierNif}</div>
-                    {r.comment && <div className="comment">💬 {r.comment}</div>}
-                  </td>
-                  <td className="small">{r.documentNumber}<div className="muted">{r.atcud}</div></td>
-                  <td className="num">{eur(r.vat)}</td><td className="num">{eur(r.total)}</td>
-                  <td className="small">{r.atStatus}</td>
-                  <td className="small">
-                    {r.matchedInvoiceId ? (
-                      <>
-                        <a href={`/o/${orgId}/invoices/${r.matchedInvoiceId}`} className="ok">✓ {r.matchedInvoiceLabel ?? 'carregado'}</a>
-                        {r.matchedInvoiceMulti && <span className="pill" title="Este documento contém várias faturas">várias faturas</span>}
-                      </>
-                    ) : r.ignored ? <span className="pill">Ignorada</span>
-                      : r.requested ? <span className="muted">pedido enviado</span>
-                      : canRequest ? <button onClick={() => run(() => api.post(`/api/orgs/${orgId}/efatura/records/${r.id}/request`))} title="Cria um pedido para o cliente carregar este documento e envia-lhe uma mensagem na inbox">Pedir documento</button>
-                      : <span className="muted">em falta</span>}
-                  </td>
-                  <td className="row-actions">
-                    <button className="link" onClick={() => setNote({ rec: r, comment: r.comment ?? '', ignored: r.ignored })}>{r.comment || r.ignored ? 'Editar nota' : 'Comentar / ignorar'}</button>
-                    {r.matchedInvoiceId
-                      ? <button className="link" onClick={() => confirm('Desassociar este documento desta linha?') && run(() => api.post(`/api/orgs/${orgId}/efatura/records/${r.id}/link`, { invoiceId: null }))}>Desassociar</button>
-                      : <button className="link" onClick={() => setLinking(r)}>Associar documento</button>}
-                  </td>
-                </tr>
-              ))}
-              {shown.length === 0 && <tr><td colSpan={8} className="center muted">Sem registos{q ? ` para "${q}"` : ''}.</td></tr>}
-            </tbody>
-          </table>
-        </div>
+        <DataTable layout={layout} rows={shown} rowKey={r => r.id} rowClassName={r => `ef-row ef-${stateOf(r)}`} className="ef-table"
+          empty={`Sem registos${q ? ` para "${q}"` : ''}.`} />
       </Card>
 
       {note && (

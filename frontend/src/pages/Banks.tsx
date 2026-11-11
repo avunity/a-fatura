@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../api'
 import { useLoad } from '../session'
 import { Card, Dropzone, ErrorBox, Modal, Page, PeriodPicker, useOrgContext } from '../components/ui'
 import { date, dateTime, eur, lastMonth } from '../util'
+import { ColumnPicker, DataTable, useTableLayout, type Col } from '../components/DataTable'
 
 type Import = { id: string; fileName: string; periodStart: string; periodEnd: string; transactionsTotal: number; transactionsNew: number; transactionsDuplicate: number; overlapWarning?: string; createdAt: string }
 type Account = {
@@ -47,6 +48,18 @@ export default function Banks() {
       reload(); reloadTx(); reloadSug()
     } catch (e) { setErr((e as Error).message) }
   }
+
+  const txColumns = useMemo<Col<Tx>[]>(() => [
+    { id: 'date', label: 'Data', width: 100, render: t => date(t.date) },
+    { id: 'description', label: 'Descrição', width: 360, locked: true, render: t => t.description },
+    { id: 'amount', label: 'Montante', width: 120, className: 'num', render: t => <span className={t.amount < 0 ? 'bad-text' : 'ok'}>{eur(t.amount)}</span> },
+    { id: 'balance', label: 'Saldo', width: 120, className: 'num muted', render: t => eur(t.balance) },
+    {
+      id: 'invoice', label: 'Fatura', width: 150,
+      render: t => t.matchedInvoiceId ? <><a href={`/o/${orgId}/invoices/${t.matchedInvoiceId}`}>ver</a> <button className="link" onClick={() => match(t.id, null)}>desligar</button></> : '',
+    },
+  ], [orgId, account?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  const txLayout = useTableLayout('bank-transactions', txColumns)
 
   async function removeImport(i: Import) {
     if (!account) return
@@ -129,17 +142,8 @@ export default function Banks() {
             </Card>
           )}
 
-          <Card title="Movimentos" right={<PeriodPicker year={period.year} month={period.month} onChange={(y, m) => setPeriod({ year: y, month: m ?? 1 })} />}>
-            <table className="table">
-              <thead><tr><th>Data</th><th>Descrição</th><th className="num">Montante</th><th className="num">Saldo</th><th>Fatura</th></tr></thead>
-              <tbody>{txs?.map(t => (
-                <tr key={t.id}>
-                  <td>{date(t.date)}</td><td>{t.description}</td>
-                  <td className={`num ${t.amount < 0 ? 'bad-text' : 'ok'}`}>{eur(t.amount)}</td><td className="num muted">{eur(t.balance)}</td>
-                  <td>{t.matchedInvoiceId ? <><a href={`/o/${orgId}/invoices/${t.matchedInvoiceId}`}>ver</a> <button className="link" onClick={() => match(t.id, null)}>desligar</button></> : ''}</td>
-                </tr>))}
-              </tbody>
-            </table>
+          <Card title="Movimentos" right={<div className="list-toolbar"><PeriodPicker year={period.year} month={period.month} onChange={(y, m) => setPeriod({ year: y, month: m ?? 1 })} /><ColumnPicker layout={txLayout} /></div>}>
+            <DataTable layout={txLayout} rows={txs ?? []} rowKey={t => t.id} empty="Sem movimentos neste mês." />
           </Card>
         </>
       )}

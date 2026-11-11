@@ -3,8 +3,8 @@ import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { api, type Category, type Invoice, type Project, type Vehicle } from '../api'
 import { useLoad } from '../session'
 import { Card, Dropzone, ErrorBox, Modal, Page, PeriodPicker, useOrgContext } from '../components/ui'
-import ColumnPicker from '../components/ColumnPicker'
-import { COLUMNS, loadPrefs, savePrefs, type ColumnId, type ColumnPref } from '../components/invoiceColumns'
+import { ColumnPicker, DataTable, useTableLayout } from '../components/DataTable'
+import { invoiceColumns } from '../components/invoiceColumns'
 import { eur } from '../util'
 
 type List = { total: number; sums?: { total: number; vat: number; net: number }; items: Invoice[] }
@@ -39,12 +39,9 @@ export default function Invoices() {
   const [uploading, setUploading] = useState<string | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
 
-  // ── Columns (order + visibility saved in the browser) ──
-  const [prefs, setPrefsState] = useState<ColumnPref[]>(loadPrefs)
-  const setPrefs = (p: ColumnPref[]) => { setPrefsState(p); savePrefs(p) }
-  const visibleCols = prefs.filter(p => p.visible).map(p => COLUMNS.find(c => c.id === p.id)!).filter(Boolean)
-  const visibleSet = useMemo(() => new Set<ColumnId>(visibleCols.map(c => c.id)), [prefs]) // eslint-disable-line react-hooks/exhaustive-deps
-  const colCount = visibleCols.length + 1 // + selection column
+  // ── Columns (order, visibility and width saved in the browser) ──
+  const columns = useMemo(() => invoiceColumns(orgId!), [orgId])
+  const layout = useTableLayout('invoices', columns)
 
   // ── Selection + bulk delete ──
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -166,10 +163,11 @@ export default function Invoices() {
         )}
         <select value={params.get('status') ?? ''} onChange={e => filter('status', e.target.value)}>
           <option value="">Todos os estados</option>
-          <option value="NeedsReview">Para rever</option>
-          <option value="Processed">Processadas</option>
           <option value="Pending">Em fila</option>
-          <option value="Failed">Com erro</option>
+          <option value="Processing">A processar</option>
+          <option value="Processed">Processada</option>
+          <option value="NeedsReview">Rever</option>
+          <option value="Failed">Erro</option>
         </select>
         <select value={params.get('collected') ?? ''} onChange={e => filter('collected', e.target.value)}>
           <option value="">e-Fatura: todas</option>
@@ -200,42 +198,32 @@ export default function Invoices() {
       <Card right={
         <div className="list-toolbar">
           {data?.sums && <span className="muted small">{data.total} documentos · Base {eur(data.sums.net)} · IVA {eur(data.sums.vat)} · <b>Total {eur(data.sums.total)}</b></span>}
-          <ColumnPicker prefs={prefs} onChange={setPrefs} />
+          <ColumnPicker layout={layout} />
         </div>
       }>
-        <div style={{ overflowX: 'auto' }}>
-        <table className="table">
-          <thead>
-            <tr>
-              <th className="sel"><input type="checkbox" checked={allSelected} onChange={toggleAll} disabled={items.length === 0} aria-label="Selecionar todas" /></th>
-              {visibleCols.map(c => <th key={c.id} className={c.className?.includes('num') ? 'num' : ''}>{c.label}</th>)}
+        <DataTable
+          layout={layout}
+          rows={items}
+          rowKey={i => i.id}
+          rowClassName={i => (selected.has(i.id) ? 'selected' : '')}
+          leadingHeader={<input type="checkbox" checked={allSelected} onChange={toggleAll} disabled={items.length === 0} aria-label="Selecionar todas" />}
+          leadingCell={i => <input type="checkbox" checked={selected.has(i.id)} onChange={() => toggleOne(i.id)} aria-label="Selecionar" />}
+          empty={sending.length === 0 ? 'Sem documentos neste período.' : undefined}
+          prefixRows={colCount => sending.map(p => (
+            <tr key={p.key} className="row-pending">
+              <td className="sel" />
+              <td colSpan={colCount - 1}>
+                <div className="row gap">
+                  <span><b>{p.name}</b> <span className="muted small">a enviar…</span></span>
+                  <span className="muted small" style={{ flex: 1 }}>{p.error ? <span className="bad-text">Falhou: {p.error}</span> : 'O documento vai ser lido (código QR + IA) assim que chegar ao servidor.'}</span>
+                  {p.error
+                    ? <button className="link" onClick={() => setSending(cur => cur.filter(x => x.key !== p.key))}>dispensar</button>
+                    : <span className="pill s-Pending"><span className="spinner" />A enviar</span>}
+                </div>
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {sending.map(p => (
-              <tr key={p.key} className="row-pending">
-                <td className="sel" />
-                <td colSpan={colCount - 1}>
-                  <div className="row gap">
-                    <span><b>{p.name}</b> <span className="muted small">a enviar…</span></span>
-                    <span className="muted small" style={{ flex: 1 }}>{p.error ? <span className="bad-text">Falhou: {p.error}</span> : 'O documento vai ser lido (código QR + IA) assim que chegar ao servidor.'}</span>
-                    {p.error
-                      ? <button className="link" onClick={() => setSending(cur => cur.filter(x => x.key !== p.key))}>dispensar</button>
-                      : <span className="pill s-Pending"><span className="spinner" />A enviar</span>}
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {items.map(i => (
-              <tr key={i.id} className={selected.has(i.id) ? 'selected' : ''}>
-                <td className="sel"><input type="checkbox" checked={selected.has(i.id)} onChange={() => toggleOne(i.id)} aria-label="Selecionar" /></td>
-                {visibleCols.map(c => <td key={c.id} className={c.className}>{c.render(i, { orgId: orgId!, visible: visibleSet })}</td>)}
-              </tr>
-            ))}
-            {items.length === 0 && sending.length === 0 && <tr><td colSpan={colCount} className="center muted">Sem documentos neste período.</td></tr>}
-          </tbody>
-        </table>
-        </div>
+          ))}
+        />
       </Card>
 
       {confirmDelete && (

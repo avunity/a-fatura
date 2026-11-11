@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api, type Category } from '../api'
 import { useLoad } from '../session'
 import { Card, ErrorBox, Modal, Page, useOrgContext } from '../components/ui'
+import { ColumnPicker, DataTable, useTableLayout, type Col } from '../components/DataTable'
 
 type Edit = { id?: string; name: string; color: string; keywords: string; isVehicleRelated: boolean; vatDeductiblePercent: string; isActive: boolean }
 
@@ -13,6 +14,15 @@ export default function Categories() {
   const [edit, setEdit] = useState<Edit | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const canEdit = (c?: Category) => (c?.isGlobal ? org?.access.isAdmin : org?.access.canManage || org?.access.isAccountant)
+
+  const columns = useMemo<Col<Category>[]>(() => [
+    { id: 'name', label: 'Categoria', width: 260, locked: true, render: c => <><span className="dot" style={{ background: c.color }} /> {c.name} {c.isGlobal && <span className="muted small">(predefinida)</span>}</> },
+    { id: 'keywords', label: 'Palavras-chave', width: 380, className: 'small muted', render: c => c.keywords },
+    { id: 'vehicle', label: 'Viaturas', width: 90, render: c => (c.isVehicleRelated ? '🚗' : '') },
+    { id: 'vat', label: '% IVA dedutível (indicativo)', width: 200, render: c => (c.vatDeductiblePercent != null ? `${c.vatDeductiblePercent}%` : '—') },
+    { id: 'actions', label: 'Ações', width: 90, className: 'row-actions', render: c => canEdit(c) && <button className="link" onClick={() => setEdit({ ...c, vatDeductiblePercent: c.vatDeductiblePercent?.toString() ?? '' })}>Editar</button> },
+  ], [org]) // eslint-disable-line react-hooks/exhaustive-deps
+  const layout = useTableLayout('categories', columns)
 
   async function save() {
     if (!edit) return
@@ -28,20 +38,7 @@ export default function Categories() {
     <Page title="Categorias" actions={canEdit() && <button className="primary" onClick={() => setEdit({ name: '', color: '#0f766e', keywords: '', isVehicleRelated: false, vatDeductiblePercent: '', isActive: true })}>+ Nova categoria</button>}>
       <p className="muted">A classificação automática usa, por esta ordem: a categoria que já escolheu antes para o mesmo fornecedor, a sugestão da IA a partir da imagem e as palavras-chave abaixo.</p>
       <Card>
-        <table className="table">
-          <thead><tr><th>Categoria</th><th>Palavras-chave</th><th>Viaturas</th><th>% IVA dedutível (indicativo)</th><th></th></tr></thead>
-          <tbody>
-            {data?.map(c => (
-              <tr key={c.id} className={c.isActive ? '' : 'muted'}>
-                <td><span className="dot" style={{ background: c.color }} /> {c.name} {c.isGlobal && <span className="muted small">(predefinida)</span>}</td>
-                <td className="small muted">{c.keywords}</td>
-                <td>{c.isVehicleRelated ? '🚗' : ''}</td>
-                <td>{c.vatDeductiblePercent != null ? `${c.vatDeductiblePercent}%` : '—'}</td>
-                <td>{canEdit(c) && <button className="link" onClick={() => setEdit({ ...c, vatDeductiblePercent: c.vatDeductiblePercent?.toString() ?? '' })}>Editar</button>}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+<DataTable layout={layout} rows={data ?? []} rowKey={c => c.id} rowClassName={c => (c.isActive ? '' : 'muted')} />
       </Card>
       {edit && (
         <Modal title={edit.id ? 'Editar categoria' : 'Nova categoria'} onClose={() => setEdit(null)}>

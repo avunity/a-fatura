@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../api'
 import { useLoad } from '../session'
 import { Card, ErrorBox, Modal, Page, useOrgContext } from '../components/ui'
 import { dateTime } from '../util'
+import { ColumnPicker, DataTable, useTableLayout, type Col } from '../components/DataTable'
 
 type Member = { id: string; userId: string; name: string; email: string; role: string; isActive: boolean; mailbox?: string; invoices: number; lastUpload?: string }
 
@@ -20,6 +21,28 @@ export default function Team() {
     setErr(null)
     try { await api.put(`/api/orgs/${orgId}/members/${m.id}`, body); reload() } catch (e) { setErr((e as Error).message) }
   }
+  const columns = useMemo<Col<Member>[]>(() => [
+    { id: 'name', label: 'Nome', width: 240, locked: true, render: m => <>{m.name}<div className="muted small">{m.email}</div></> },
+    {
+      id: 'role', label: 'Perfil', width: 150,
+      render: m => canManage
+        ? <select value={m.role} onChange={e => update(m, { role: e.target.value })}><option value="Collaborator">Colaborador</option><option value="Manager">Gestor</option></select>
+        : (m.role === 'Manager' ? 'Gestor' : 'Colaborador'),
+    },
+    { id: 'mailbox', label: 'Email para faturas', width: 300, className: 'small', render: m => m.mailbox ? <code onClick={() => navigator.clipboard.writeText(m.mailbox!)} title="Copiar">{m.mailbox}</code> : <span className="muted">configure Mail:InboundDomain</span> },
+    { id: 'invoices', label: 'Documentos', width: 110, className: 'num', render: m => m.invoices },
+    { id: 'last', label: 'Último envio', width: 140, className: 'small', render: m => dateTime(m.lastUpload) },
+    {
+      id: 'actions', label: 'Ações', width: 180, className: 'row-actions',
+      render: m => canManage && <>
+        <button className="link" onClick={() => update(m, { isActive: !m.isActive })}>{m.isActive ? 'Desativar' : 'Ativar'}</button>
+        <button className="link" onClick={async () => { await api.post(`/api/orgs/${orgId}/members/${m.id}/rotate-mailbox`); reload() }}>Novo email</button>
+      </>,
+    },
+  ], [canManage, orgId]) // eslint-disable-line react-hooks/exhaustive-deps
+  const layout = useTableLayout('team', columns)
+
+
 
   return (
     <Page title="Colaboradores" actions={canManage && <button className="primary" onClick={() => setAdd({ name: '', email: '', role: 'Collaborator' })}>+ Adicionar colaborador</button>}>
@@ -32,24 +55,7 @@ export default function Team() {
         </div>
       )}
       <Card>
-        <table className="table">
-          <thead><tr><th>Nome</th><th>Perfil</th><th>Email para faturas</th><th>Documentos</th><th>Último envio</th><th></th></tr></thead>
-          <tbody>{data?.map(m => (
-            <tr key={m.id} className={m.isActive ? '' : 'muted'}>
-              <td>{m.name}<div className="muted small">{m.email}</div></td>
-              <td>{canManage
-                ? <select value={m.role} onChange={e => update(m, { role: e.target.value })}><option value="Collaborator">Colaborador</option><option value="Manager">Gestor</option></select>
-                : m.role}</td>
-              <td className="small">{m.mailbox ? <code onClick={() => navigator.clipboard.writeText(m.mailbox!)} title="Copiar">{m.mailbox}</code> : <span className="muted">configure Mail:InboundDomain</span>}</td>
-              <td>{m.invoices}</td>
-              <td className="small">{dateTime(m.lastUpload)}</td>
-              <td>{canManage && <>
-                <button className="link" onClick={() => update(m, { isActive: !m.isActive })}>{m.isActive ? 'Desativar' : 'Ativar'}</button>
-                <button className="link" onClick={async () => { await api.post(`/api/orgs/${orgId}/members/${m.id}/rotate-mailbox`); reload() }}>Novo email</button>
-              </>}</td>
-            </tr>))}
-          </tbody>
-        </table>
+<DataTable layout={layout} rows={data ?? []} rowKey={m => m.id} rowClassName={m => (m.isActive ? '' : 'muted')} empty="Sem colaboradores." />
       </Card>
 
       {add && (
