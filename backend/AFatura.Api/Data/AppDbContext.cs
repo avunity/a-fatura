@@ -76,6 +76,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.VatAmount).HasPrecision(14, 2);
             e.Property(x => x.TotalAmount).HasPrecision(14, 2);
             e.OwnsMany(x => x.VatLines, vl => vl.ToJson());
+            e.OwnsMany(x => x.SubDocuments, sd => sd.ToJson());
             e.HasOne(x => x.Organization).WithMany().HasForeignKey(x => x.OrganizationId);
             e.HasOne(x => x.UploadedBy).WithMany().HasForeignKey(x => x.UploadedByUserId);
             e.HasOne(x => x.File).WithMany().HasForeignKey(x => x.FileId);

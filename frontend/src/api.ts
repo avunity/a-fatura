@@ -61,11 +61,13 @@ export type OrgInfo = {
   access: { canSeeAll: boolean; canManage: boolean; isAccountant: boolean; isAdmin: boolean; role?: string }
   accountants: { accountantUserId: string; name: string; email: string }[]
 }
+export type SubDocument = { supplierNif: string; documentType?: string; documentNumber?: string; atcud?: string; issueDate?: string; total?: number; vat?: number }
 export type VatLine = { region?: string; rate: number; base: number; vat: number }
 export type Invoice = {
   id: string; status: string; source: string; extractionMethod: string
   supplierNif?: string; supplierName?: string; buyerNif?: string; documentType?: string; documentNumber?: string; atcud?: string
   issueDate?: string; netAmount?: number; vatAmount?: number; totalAmount?: number; currency: string; vatLines: VatLine[]
+  subDocuments: SubDocument[]
   summary?: string; licensePlateDetected?: string; fuelLiters?: number; energyKwh?: number
   categoryId?: string; categoryName?: string; categoryColor?: string; vehicleId?: string; vehiclePlate?: string
   projectId?: string; projectName?: string; projectColor?: string

@@ -7,7 +7,7 @@ namespace AFatura.Api.Features.Extraction;
 /// <summary>Finds QR codes in images and PDF pages (PDFium via PDFtoImage → SkiaSharp bitmap → ZXing).</summary>
 public class QrDecoder(ILogger<QrDecoder> log)
 {
-    private const int MaxPdfPages = 6;
+    private const int MaxPdfPages = 40; // statements such as Via Verde carry one QR code per invoice, on many pages
 
     public IReadOnlyList<string> Decode(byte[] data, string contentType)
     {
@@ -21,7 +21,7 @@ public class QrDecoder(ILogger<QrDecoder> log)
                 foreach (var bmp in PDFtoImage.Conversion.ToImages(ms))
                 {
                     using (bmp) found.AddRange(DecodeBitmap(bmp));
-                    if (found.Any(AtQrCodeParser.LooksLikeAtQr) || ++page >= MaxPdfPages) break;
+                    if (++page >= MaxPdfPages) break;
                 }
             }
             else

@@ -94,6 +94,17 @@ export default function InvoiceDetail() {
               </table>
             )}
           </Card>
+          {inv.subDocuments?.length > 1 && (
+            <Card title={`Este documento contém ${inv.subDocuments.length} faturas`}>
+              <p className="small muted">Cada fatura é ligada à sua linha do e-Fatura. Os totais acima são a soma de todas.</p>
+              <table className="table small">
+                <thead><tr><th>Data</th><th>Documento</th><th>ATCUD</th><th className="num">IVA</th><th className="num">Total</th></tr></thead>
+                <tbody>{inv.subDocuments.map((d, k) => (
+                  <tr key={k}><td>{d.issueDate ? new Date(d.issueDate).toLocaleDateString('pt-PT') : '—'}</td><td>{d.documentNumber}</td><td className="muted">{d.atcud}</td><td className="num">{eur(d.vat)}</td><td className="num">{eur(d.total)}</td></tr>
+                ))}</tbody>
+              </table>
+            </Card>
+          )}
           <Card title="Classificação">
             <div className="form-grid">
               <label>Categoria

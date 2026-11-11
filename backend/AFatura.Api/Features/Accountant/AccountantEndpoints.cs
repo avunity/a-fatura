@@ -41,7 +41,7 @@ public static class AccountantEndpoints
                 }).ToList();
             var ef = await db.EFaturaRecords.Where(r => ids.Contains(r.OrganizationId) && r.IssueDate.Year == year && r.IssueDate.Month == month)
                 .GroupBy(r => r.OrganizationId)
-                .Select(g => new { OrgId = g.Key, Count = g.Count(), Matched = g.Count(r => r.MatchedInvoiceId != null), Total = g.Sum(r => r.Total) })
+                .Select(g => new { OrgId = g.Key, Count = g.Count(r => !r.Ignored || r.MatchedInvoiceId != null), Matched = g.Count(r => r.MatchedInvoiceId != null), Total = g.Sum(r => r.Total) })
                 .ToListAsync(ct);
             var lastUpload = await db.Invoices.Where(i => ids.Contains(i.OrganizationId))
                 .GroupBy(i => i.OrganizationId).Select(g => new { OrgId = g.Key, Last = g.Max(i => i.CreatedAt) }).ToListAsync(ct);

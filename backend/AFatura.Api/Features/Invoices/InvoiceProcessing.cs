@@ -94,8 +94,13 @@ public class InvoiceProcessor(
 
         // 1) Fiscal QR code
         var qrTexts = qr.Decode(data, inv.File.ContentType);
-        var atQr = qrTexts.Select(AtQrCodeParser.TryParse).FirstOrDefault(q => q != null);
-        if (atQr != null) ApplyQr(inv, atQr);
+        var atQrs = qrTexts.Select(AtQrCodeParser.TryParse).OfType<AtQrCode>()
+            .GroupBy(q => $"{Text.NormalizeNif(q.SupplierNif)}|{Text.NormalizeDocNumber(q.DocumentNumber)}|{q.Atcud}")
+            .Select(g => g.First()).ToList();
+        var atQr = atQrs.FirstOrDefault();
+        inv.SubDocuments = [];
+        if (atQrs.Count > 1) ApplyMultipleQr(inv, atQrs);
+        else if (atQr != null) ApplyQr(inv, atQr);
 
         var supplier = await FindSupplierAsync(inv.OrganizationId, inv.SupplierNif, ct);
 
@@ -157,7 +162,7 @@ public class InvoiceProcessor(
         }
 
         // 5) e-Fatura
-        if (inv.DuplicateOfId == null && inv.EFaturaRecordId == null)
+        if (inv.DuplicateOfId == null && (inv.EFaturaRecordId == null || inv.SubDocuments.Count > 0))
         {
             var linked = await efatura.TryLinkAsync(inv, ct);
             if (!linked && inv.IssueDate is { } d && await db.EFaturaImports.AnyAsync(
@@ -190,6 +195,36 @@ public class InvoiceProcessor(
         inv.VatAmount = q.TotalTaxes ?? q.VatLines.Sum(v => v.Vat);
         inv.TotalAmount = q.Total;
         inv.NetAmount = q.Total is { } t ? t - (q.TotalTaxes ?? 0) : q.NetAmount;
+    }
+
+    /// <summary>
+    /// A file with several fiscal QR codes (e.g. Via Verde statement): totals are the sum, each invoice is kept in
+    /// SubDocuments so it can be matched with its own e-Fatura line.
+    /// </summary>
+    private static void ApplyMultipleQr(Invoice inv, List<AtQrCode> qrs)
+    {
+        var first = qrs[0];
+        inv.HasValidQr = true;
+        inv.QrRaw = string.Join("\n", qrs.Select(q => q.Raw));
+        inv.SupplierNif = first.SupplierNif;
+        inv.BuyerNif = first.BuyerNif;
+        inv.DocumentType = first.DocumentType;
+        inv.DocumentNumber = $"{first.DocumentNumber} (+{qrs.Count - 1})";
+        inv.Atcud = first.Atcud;
+        inv.IssueDate = qrs.Max(q => q.IssueDate);
+        inv.TotalAmount = qrs.Sum(q => q.Total ?? 0);
+        inv.VatAmount = qrs.Sum(q => q.TotalTaxes ?? q.VatLines.Sum(v => v.Vat));
+        inv.NetAmount = inv.TotalAmount - inv.VatAmount;
+        inv.VatLines = qrs.SelectMany(q => q.VatLines)
+            .GroupBy(v => (v.Region, v.Rate))
+            .Select(g => new VatLine { Region = g.Key.Region, Rate = g.Key.Rate, Base = g.Sum(v => v.Base), Vat = g.Sum(v => v.Vat) })
+            .ToList();
+        inv.SubDocuments = qrs.Select(q => new SubDocument
+        {
+            SupplierNif = Text.NormalizeNif(q.SupplierNif), DocumentType = q.DocumentType, DocumentNumber = q.DocumentNumber,
+            Atcud = q.Atcud, IssueDate = q.IssueDate, Total = q.Total, Vat = q.TotalTaxes,
+        }).ToList();
+        inv.Summary ??= $"Documento com {qrs.Count} faturas";
     }
 
     private static void ApplyAi(Invoice inv, AiExtraction a, bool overwriteFiscal)

@@ -245,3 +245,11 @@ img.preview, iframe.preview { color-scheme: light; }
 .bulk-bar .spacer { flex: 1; }
 .list-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .list-toolbar .spacer { flex: 1; }
+
+/* e-Fatura list */
+.list-toolbar .search { flex: 1; min-width: 260px; }
+.tabs.inline { flex-wrap: nowrap; }
+.comment { margin-top: 4px; font-size: 12px; color: var(--text-2); background: var(--hover); border-radius: 6px; padding: 3px 8px; display: inline-block; max-width: 340px; white-space: pre-wrap; }
+.row-actions { white-space: nowrap; text-align: right; }
+.row-actions .link { font-size: 12px; }
+.link-list { display: flex; flex-direction: column; gap: 2px; max-height: 50vh; overflow: auto; border: 1px solid var(--line); border-radius: 10px; padding: 4px; }

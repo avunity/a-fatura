@@ -99,3 +99,30 @@ public class PdfStatementTests
         Assert.Empty(AFatura.Api.Features.Banking.PdfStatementReader.CheckBalances(rows, opening, 2067.65m));
     }
 }
+
+public class EFaturaMatcherTests
+{
+    [Fact]
+    public void Multi_invoice_document_matches_each_line()
+    {
+        var inv = new AFatura.Api.Domain.Invoice
+        {
+            SupplierNif = "504709275",
+            SubDocuments =
+            [
+                new() { SupplierNif = "504709275", DocumentNumber = "FT VV/1001", Total = 3.10m },
+                new() { SupplierNif = "504709275", DocumentNumber = "FT VV/1002", Total = 7.45m },
+            ]
+        };
+        var records = new List<AFatura.Api.Domain.EFaturaRecord>
+        {
+            new() { SupplierNif = "504709275", DocumentNumber = "FT VV/1002", Total = 7.45m },
+            new() { SupplierNif = "504709275", DocumentNumber = "FT VV/1001", Total = 3.10m },
+            new() { SupplierNif = "504709275", DocumentNumber = "FT VV/1003", Total = 1.20m },
+        };
+        var parts = AFatura.Api.Features.EFatura.EFaturaMatcher.Parts(inv);
+        Assert.Equal(2, parts.Count);
+        var matched = parts.Select(p => AFatura.Api.Features.EFatura.EFaturaMatcher.Best(p, records)?.DocumentNumber).ToList();
+        Assert.Equal(new[] { "FT VV/1001", "FT VV/1002" }, matched);
+    }
+}

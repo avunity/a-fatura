@@ -36,6 +36,13 @@ public static class SchemaUpgrades
                 END IF;
             END $$;
             """),
+        ("2026-11 e-fatura ignore/comment + multi-invoice documents", """
+            ALTER TABLE "EFaturaRecords" ADD COLUMN IF NOT EXISTS "Ignored" boolean NOT NULL DEFAULT FALSE;
+            ALTER TABLE "EFaturaRecords" ADD COLUMN IF NOT EXISTS "Comment" text NULL;
+            ALTER TABLE "EFaturaRecords" ADD COLUMN IF NOT EXISTS "UpdatedAt" timestamp with time zone NULL;
+            ALTER TABLE "EFaturaRecords" ADD COLUMN IF NOT EXISTS "UpdatedByUserId" uuid NULL;
+            ALTER TABLE "Invoices" ADD COLUMN IF NOT EXISTS "SubDocuments" jsonb NOT NULL DEFAULT '[]'::jsonb;
+            """),
     ];
 
     public static async Task ApplyAsync(AppDbContext db, ILogger log)

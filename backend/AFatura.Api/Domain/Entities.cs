@@ -150,6 +150,18 @@ public class StoredFile
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
+/// <summary>One invoice inside a document that contains several (e.g. a Via Verde statement with one QR code per invoice).</summary>
+public class SubDocument
+{
+    public string SupplierNif { get; set; } = "";
+    public string? DocumentType { get; set; }
+    public string? DocumentNumber { get; set; }
+    public string? Atcud { get; set; }
+    public DateOnly? IssueDate { get; set; }
+    public decimal? Total { get; set; }
+    public decimal? Vat { get; set; }
+}
+
 public class VatLine
 {
     public string? Region { get; set; } // PT, PT-AC, PT-MA
@@ -185,6 +197,8 @@ public class Invoice
     public decimal? TotalAmount { get; set; }
     public string Currency { get; set; } = "EUR";
     public List<VatLine> VatLines { get; set; } = [];
+    /// <summary>Filled when the file contains several invoices (each one is matched with its own e-Fatura line).</summary>
+    public List<SubDocument> SubDocuments { get; set; } = [];
     public string? Summary { get; set; }
     public string? LicensePlateDetected { get; set; }
     public decimal? FuelLiters { get; set; }
@@ -259,6 +273,11 @@ public class EFaturaRecord
     /// <summary>Normalized SupplierNif|DocumentNumber — unique per organization so re-imports never duplicate.</summary>
     public string UniqueKey { get; set; } = "";
     public Guid? MatchedInvoiceId { get; set; }
+    /// <summary>Marked by the user/accountant as not needing a document (e.g. not a business expense).</summary>
+    public bool Ignored { get; set; }
+    public string? Comment { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+    public Guid? UpdatedByUserId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 

@@ -86,6 +86,9 @@ public static partial class EFaturaCsvParser
     [GeneratedRegex(@"^[A-Z0-9]{8,}-\d+$")] private static partial Regex AtcudRx();
 }
 
+public record RecordUpdate(string? Comment, bool? Ignored);
+public record LinkInput(Guid? InvoiceId);
+
 public static class EFaturaEndpoints
 {
     public static void MapEFaturaEndpoints(this IEndpointRouteBuilder app)
@@ -159,27 +162,109 @@ public static class EFaturaEndpoints
             audit.Log(orgId, me.Id, "efatura.import", nameof(EFaturaImport), import.Id, $"{rows.Count} registos");
             await db.SaveChangesAsync(ct);
 
-            var missing = touched.Count(r => r.MatchedInvoiceId == null);
+            var missing = touched.Count(r => r.MatchedInvoiceId == null && !r.Ignored);
             return Results.Ok(new { import, missing, warnings = errors.Take(50) });
         }).DisableAntiforgery();
 
-        g.MapGet("records", async (Guid orgId, int? year, int? month, bool? matched, AccessService access, AppDbContext db, CancellationToken ct) =>
+        g.MapGet("records", async (Guid orgId, int? year, int? month, bool? matched, string? state, string? q,
+            AccessService access, AppDbContext db, CancellationToken ct) =>
         {
             await access.RequireSeeAllAsync(orgId, ct);
-            var q = db.EFaturaRecords.Where(r => r.OrganizationId == orgId);
-            if (year is { } y) q = q.Where(r => r.IssueDate.Year == y);
-            if (month is { } m) q = q.Where(r => r.IssueDate.Month == m);
-            if (matched is { } mt) q = mt ? q.Where(r => r.MatchedInvoiceId != null) : q.Where(r => r.MatchedInvoiceId == null);
-            var items = await q.OrderByDescending(r => r.IssueDate).Take(2000).ToListAsync(ct);
+            var query = db.EFaturaRecords.Where(r => r.OrganizationId == orgId);
+            if (year is { } y) query = query.Where(r => r.IssueDate.Year == y);
+            if (month is { } m) query = query.Where(r => r.IssueDate.Month == m);
+            if (matched is { } mt) query = mt ? query.Where(r => r.MatchedInvoiceId != null) : query.Where(r => r.MatchedInvoiceId == null && !r.Ignored);
+            query = state switch
+            {
+                "missing" => query.Where(r => r.MatchedInvoiceId == null && !r.Ignored),
+                "matched" => query.Where(r => r.MatchedInvoiceId != null),
+                "ignored" => query.Where(r => r.Ignored),
+                _ => query
+            };
+            if (!string.IsNullOrWhiteSpace(q))
+            {
+                var term = $"%{q.Trim()}%";
+                var amount = Text.ParseAmount(q);
+                query = query.Where(r => EF.Functions.ILike(r.SupplierName ?? "", term) || EF.Functions.ILike(r.SupplierNif, term)
+                                         || EF.Functions.ILike(r.DocumentNumber, term) || EF.Functions.ILike(r.Atcud ?? "", term)
+                                         || EF.Functions.ILike(r.Comment ?? "", term) || (amount != null && r.Total == amount));
+            }
+            var items = await query.OrderByDescending(r => r.IssueDate).ThenBy(r => r.SupplierName).Take(2000).ToListAsync(ct);
             var ids = items.Select(r => r.Id).ToList();
             var requested = await db.DocumentRequests
                 .Where(d => d.EFaturaRecordId != null && ids.Contains(d.EFaturaRecordId.Value) && d.Status == DocumentRequestStatus.Open)
                 .Select(d => d.EFaturaRecordId!.Value).ToListAsync(ct);
+            var invIds = items.Where(r => r.MatchedInvoiceId != null).Select(r => r.MatchedInvoiceId!.Value).Distinct().ToList();
+            var invoices = (await db.Invoices.Where(i => invIds.Contains(i.Id)).ToListAsync(ct))
+                .Select(i => new { i.Id, Label = i.SupplierName ?? i.DocumentNumber ?? "Documento", Multi = i.SubDocuments.Count > 1 })
+                .ToDictionary(i => i.Id);
             return Results.Ok(items.Select(r => new
             {
                 r.Id, r.SupplierNif, r.SupplierName, r.DocumentNumber, r.Atcud, r.DocumentType, r.IssueDate,
-                r.Total, r.Vat, r.Base, r.Sector, r.AtStatus, r.MatchedInvoiceId, Requested = requested.Contains(r.Id)
+                r.Total, r.Vat, r.Base, r.Sector, r.AtStatus, r.MatchedInvoiceId, r.Ignored, r.Comment, r.UpdatedAt,
+                MatchedInvoiceLabel = r.MatchedInvoiceId is { } mi && invoices.TryGetValue(mi, out var inv) ? inv.Label : null,
+                MatchedInvoiceMulti = r.MatchedInvoiceId is { } mi2 && invoices.TryGetValue(mi2, out var inv2) && inv2.Multi,
+                Requested = requested.Contains(r.Id)
             }));
+        });
+
+        // Comment and/or mark as "ignored" (no document needed — e.g. a private expense with the company NIF by mistake).
+        g.MapPut("records/{id:guid}", async (Guid orgId, Guid id, RecordUpdate input, AccessService access, CurrentUser me,
+            AuditService audit, AppDbContext db, CancellationToken ct) =>
+        {
+            await access.RequireSeeAllAsync(orgId, ct);
+            var rec = await db.EFaturaRecords.FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == orgId, ct)
+                      ?? throw new AppException(404, "Registo não encontrado");
+            if (input.Comment != null) rec.Comment = string.IsNullOrWhiteSpace(input.Comment) ? null : input.Comment.Trim();
+            if (input.Ignored is { } ig)
+            {
+                rec.Ignored = ig;
+                if (ig) // nothing to ask the client anymore
+                    await db.DocumentRequests.Where(d => d.EFaturaRecordId == rec.Id && d.Status == DocumentRequestStatus.Open)
+                        .ExecuteUpdateAsync(x => x.SetProperty(d => d.Status, DocumentRequestStatus.Dismissed)
+                                                  .SetProperty(d => d.ResolvedAt, DateTime.UtcNow), ct);
+            }
+            rec.UpdatedAt = DateTime.UtcNow;
+            rec.UpdatedByUserId = me.Id;
+            audit.Log(orgId, me.Id, "efatura.record.update", nameof(EFaturaRecord), rec.Id, $"ignored={rec.Ignored}");
+            await db.SaveChangesAsync(ct);
+            return Results.NoContent();
+        });
+
+        // Manual link with an uploaded document (or unlink with invoiceId = null). One document may cover several lines.
+        g.MapPost("records/{id:guid}/link", async (Guid orgId, Guid id, LinkInput input, AccessService access, CurrentUser me,
+            AuditService audit, AppDbContext db, CancellationToken ct) =>
+        {
+            await access.RequireSeeAllAsync(orgId, ct);
+            var rec = await db.EFaturaRecords.FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == orgId, ct)
+                      ?? throw new AppException(404, "Registo não encontrado");
+            var previous = rec.MatchedInvoiceId;
+            if (input.InvoiceId is { } invId)
+            {
+                var inv = await db.Invoices.FirstOrDefaultAsync(i => i.Id == invId && i.OrganizationId == orgId, ct)
+                          ?? throw new AppException(400, "Documento inválido");
+                rec.MatchedInvoiceId = inv.Id;
+                rec.Ignored = false;
+                inv.EFaturaRecordId ??= rec.Id;
+                inv.Flags.Remove(InvoiceFlags.NotInEFatura);
+                await db.DocumentRequests.Where(d => d.EFaturaRecordId == rec.Id && d.Status == DocumentRequestStatus.Open)
+                    .ExecuteUpdateAsync(x => x.SetProperty(d => d.Status, DocumentRequestStatus.Fulfilled)
+                                              .SetProperty(d => d.FulfilledByInvoiceId, (Guid?)inv.Id)
+                                              .SetProperty(d => d.ResolvedAt, DateTime.UtcNow), ct);
+            }
+            else rec.MatchedInvoiceId = null;
+
+            // The previous document keeps pointing to one of its remaining lines (or none).
+            if (previous is { } prevId && previous != rec.MatchedInvoiceId)
+            {
+                var prevInv = await db.Invoices.FirstOrDefaultAsync(i => i.Id == prevId, ct);
+                if (prevInv != null && prevInv.EFaturaRecordId == rec.Id)
+                    prevInv.EFaturaRecordId = await db.EFaturaRecords
+                        .Where(r => r.MatchedInvoiceId == prevId && r.Id != rec.Id).Select(r => (Guid?)r.Id).FirstOrDefaultAsync(ct);
+            }
+            audit.Log(orgId, me.Id, "efatura.record.link", nameof(EFaturaRecord), rec.Id, input.InvoiceId?.ToString() ?? "unlink");
+            await db.SaveChangesAsync(ct);
+            return Results.NoContent();
         });
 
         g.MapPost("records/{id:guid}/request", async (Guid orgId, Guid id, AccessService access, CurrentUser me, AppDbContext db, CancellationToken ct) =>

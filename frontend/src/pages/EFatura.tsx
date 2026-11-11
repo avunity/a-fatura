@@ -1,24 +1,37 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { api } from '../api'
+import { api, type Invoice } from '../api'
 import { useLoad } from '../session'
-import { Card, Dropzone, ErrorBox, Page, PeriodPicker, Stat } from '../components/ui'
+import { Card, Dropzone, ErrorBox, Modal, Page, PeriodPicker, Stat } from '../components/ui'
 import { date, dateTime, eur, lastMonth, pct } from '../util'
 
 type Import = { id: string; fileName: string; periodStart: string; periodEnd: string; recordsTotal: number; recordsNew: number; recordsAlreadyKnown: number; recordsMatched: number; createdAt: string }
-type Rec = { id: string; supplierNif: string; supplierName?: string; documentNumber: string; atcud?: string; documentType?: string; issueDate: string; total: number; vat?: number; atStatus?: string; matchedInvoiceId?: string; requested: boolean }
+type Rec = {
+  id: string; supplierNif: string; supplierName?: string; documentNumber: string; atcud?: string; documentType?: string; issueDate: string
+  total: number; vat?: number; atStatus?: string; matchedInvoiceId?: string; matchedInvoiceLabel?: string; matchedInvoiceMulti?: boolean
+  ignored: boolean; comment?: string; updatedAt?: string; requested: boolean
+}
+type State = 'all' | 'missing' | 'matched' | 'ignored'
+
+const stateOf = (r: Rec): State => (r.matchedInvoiceId ? 'matched' : r.ignored ? 'ignored' : 'missing')
 
 export default function EFatura() {
   const { orgId } = useParams()
   const lm = lastMonth()
   const [period, setPeriod] = useState<{ year: number; month?: number }>(lm)
-  const [onlyMissing, setOnlyMissing] = useState(false)
+  const [state, setState] = useState<State>('all')
+  const [search, setSearch] = useState('')
+  const [q, setQ] = useState('')
+  useEffect(() => { const t = setTimeout(() => setQ(search.trim()), 350); return () => clearTimeout(t) }, [search])
+
   const { data: imports, reload: reloadImports } = useLoad(() => api.get<Import[]>(`/api/orgs/${orgId}/efatura/imports`), [orgId])
   const { data: records, reload } = useLoad(
-    () => api.get<Rec[]>(`/api/orgs/${orgId}/efatura/records?year=${period.year}${period.month ? `&month=${period.month}` : ''}${onlyMissing ? '&matched=false' : ''}`),
-    [orgId, period.year, period.month, onlyMissing])
+    () => api.get<Rec[]>(`/api/orgs/${orgId}/efatura/records?year=${period.year}${period.month ? `&month=${period.month}` : ''}${q ? `&q=${encodeURIComponent(q)}` : ''}`),
+    [orgId, period.year, period.month, q])
   const [msg, setMsg] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [note, setNote] = useState<{ rec: Rec; comment: string; ignored: boolean } | null>(null)
+  const [linking, setLinking] = useState<Rec | null>(null)
 
   async function upload(files: File[]) {
     if (!files[0]) return
@@ -32,8 +45,12 @@ export default function EFatura() {
     } catch (e) { setErr((e as Error).message) }
   }
 
-  const total = records?.length ?? 0
-  const matched = records?.filter(r => r.matchedInvoiceId).length ?? 0
+  const run = async (fn: () => Promise<unknown>) => { setErr(null); try { await fn(); await reload() } catch (e) { setErr((e as Error).message) } }
+
+  const all = records ?? []
+  const counts = { all: all.length, missing: all.filter(r => stateOf(r) === 'missing').length, matched: all.filter(r => stateOf(r) === 'matched').length, ignored: all.filter(r => r.ignored && !r.matchedInvoiceId).length }
+  const shown = state === 'all' ? all : all.filter(r => stateOf(r) === state)
+  const relevant = counts.all - counts.ignored
 
   return (
     <Page title="e-Fatura (AT)" actions={<PeriodPicker year={period.year} month={period.month} allowAllMonths onChange={(y, m) => setPeriod({ year: y, month: m })} />}>
@@ -41,7 +58,6 @@ export default function EFatura() {
         <Card title="Importar CSV do e-Fatura">
           <p className="small muted">Portal e-Fatura → Faturas → Consultar faturas (adquirente) → escolher o período → Exportar CSV. Os registos repetidos de importações anteriores são atualizados, nunca duplicados.</p>
           <Dropzone label="Ficheiro CSV do e-Fatura" accept=".csv,text/csv" multiple={false} onFiles={upload} />
-          <ErrorBox error={err} />
           {msg && <div className="alert ok">{msg}</div>}
         </Card>
         <Card title="Importações">
@@ -52,34 +68,105 @@ export default function EFatura() {
         </Card>
       </div>
 
-      {!onlyMissing && (
-        <div className="stats">
-          <Stat label="Faturas na AT" value={total} />
-          <Stat label="Com documento carregado" value={matched} tone="ok" />
-          <Stat label="Em falta" value={total - matched} tone={total - matched > 0 ? 'warn' : 'ok'} />
-          <Stat label="Cobertura" value={pct(total ? matched / total : null)} />
+      <div className="stats">
+        <Stat label="Faturas na AT" value={counts.all} hint={counts.ignored ? `${counts.ignored} ignoradas` : undefined} />
+        <Stat label="Com documento carregado" value={counts.matched} tone="ok" />
+        <Stat label="Em falta" value={counts.missing} tone={counts.missing > 0 ? 'warn' : 'ok'} />
+        <Stat label="Cobertura" value={pct(relevant ? counts.matched / relevant : null)} hint="sem contar as ignoradas" />
+      </div>
+
+      <ErrorBox error={err} />
+      <Card>
+        <div className="list-toolbar">
+          <input className="search" placeholder="Pesquisar emitente, NIF, nº, ATCUD, comentário ou valor (ex: 12,30)…" value={search} onChange={e => setSearch(e.target.value)} />
+          <div className="tabs inline">
+            {([['all', 'Todas'], ['missing', 'Em falta'], ['matched', 'Com documento'], ['ignored', 'Ignoradas']] as const).map(([k, l]) => (
+              <button key={k} className={state === k ? 'on' : ''} onClick={() => setState(k)}>{l} <span className="muted small">{counts[k]}</span></button>
+            ))}
+          </div>
         </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="table">
+            <thead><tr><th>Data</th><th>Emitente</th><th>Documento</th><th className="num">IVA</th><th className="num">Total</th><th>Situação AT</th><th>Documento carregado</th><th></th></tr></thead>
+            <tbody>
+              {shown.map(r => (
+                <tr key={r.id} className={r.ignored && !r.matchedInvoiceId ? 'muted' : ''}>
+                  <td>{date(r.issueDate)}</td>
+                  <td>
+                    {r.supplierName}<div className="muted small">{r.supplierNif}</div>
+                    {r.comment && <div className="comment">💬 {r.comment}</div>}
+                  </td>
+                  <td className="small">{r.documentNumber}<div className="muted">{r.atcud}</div></td>
+                  <td className="num">{eur(r.vat)}</td><td className="num">{eur(r.total)}</td>
+                  <td className="small">{r.atStatus}</td>
+                  <td className="small">
+                    {r.matchedInvoiceId ? (
+                      <>
+                        <a href={`/o/${orgId}/invoices/${r.matchedInvoiceId}`} className="ok">✓ {r.matchedInvoiceLabel ?? 'carregado'}</a>
+                        {r.matchedInvoiceMulti && <span className="pill" title="Este documento contém várias faturas">várias faturas</span>}
+                      </>
+                    ) : r.ignored ? <span className="pill">Ignorada</span>
+                      : r.requested ? <span className="muted">pedido enviado</span>
+                      : <button onClick={() => run(() => api.post(`/api/orgs/${orgId}/efatura/records/${r.id}/request`))} title="Cria um pedido para o cliente carregar este documento e envia-lhe uma mensagem">Pedir documento</button>}
+                  </td>
+                  <td className="row-actions">
+                    <button className="link" onClick={() => setNote({ rec: r, comment: r.comment ?? '', ignored: r.ignored })}>{r.comment || r.ignored ? 'Editar nota' : 'Comentar / ignorar'}</button>
+                    {r.matchedInvoiceId
+                      ? <button className="link" onClick={() => confirm('Desassociar este documento desta linha?') && run(() => api.post(`/api/orgs/${orgId}/efatura/records/${r.id}/link`, { invoiceId: null }))}>Desassociar</button>
+                      : <button className="link" onClick={() => setLinking(r)}>Associar documento</button>}
+                  </td>
+                </tr>
+              ))}
+              {shown.length === 0 && <tr><td colSpan={8} className="center muted">Sem registos{q ? ` para "${q}"` : ''}.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {note && (
+        <Modal title={`${note.rec.supplierName ?? note.rec.supplierNif} · ${note.rec.documentNumber}`} onClose={() => setNote(null)}>
+          <p className="small muted">{date(note.rec.issueDate)} · {eur(note.rec.total)}</p>
+          <label>Comentário<textarea rows={3} value={note.comment} onChange={e => setNote({ ...note, comment: e.target.value })} placeholder="ex: despesa pessoal com o NIF da empresa; já incluída no documento X…" /></label>
+          <label className="inline"><input type="checkbox" checked={note.ignored} onChange={e => setNote({ ...note, ignored: e.target.checked })} /> Ignorar esta linha (não precisa de documento — deixa de contar como "em falta")</label>
+          <div className="row gap">
+            <button className="primary" onClick={async () => { await run(() => api.put(`/api/orgs/${orgId}/efatura/records/${note.rec.id}`, { comment: note.comment, ignored: note.ignored })); setNote(null) }}>Guardar</button>
+            <button onClick={() => setNote(null)}>Cancelar</button>
+          </div>
+        </Modal>
       )}
 
-      <Card title="Registos" right={<label className="inline small"><input type="checkbox" checked={onlyMissing} onChange={e => setOnlyMissing(e.target.checked)} /> Só os que não têm documento</label>}>
-        <table className="table">
-          <thead><tr><th>Data</th><th>Emitente</th><th>Documento</th><th className="num">IVA</th><th className="num">Total</th><th>Situação AT</th><th>Documento</th></tr></thead>
-          <tbody>{records?.map(r => (
-            <tr key={r.id}>
-              <td>{date(r.issueDate)}</td>
-              <td>{r.supplierName}<div className="muted small">{r.supplierNif}</div></td>
-              <td className="small">{r.documentNumber}<div className="muted">{r.atcud}</div></td>
-              <td className="num">{eur(r.vat)}</td><td className="num">{eur(r.total)}</td>
-              <td className="small">{r.atStatus}</td>
-              <td>{r.matchedInvoiceId
-                ? <a href={`/o/${orgId}/invoices/${r.matchedInvoiceId}`} className="ok">✓ carregado</a>
-                : r.requested ? <span className="muted">pedido enviado</span>
-                : <button onClick={async () => { await api.post(`/api/orgs/${orgId}/efatura/records/${r.id}/request`); reload() }}>Pedir documento</button>}
-              </td>
-            </tr>))}
-          </tbody>
-        </table>
-      </Card>
+      {linking && <LinkModal orgId={orgId!} rec={linking} onClose={() => setLinking(null)} onLinked={async () => { setLinking(null); await reload() }} />}
     </Page>
+  )
+}
+
+/** Pick an uploaded document for an e-Fatura line (useful when one file holds several invoices, e.g. Via Verde). */
+function LinkModal({ orgId, rec, onClose, onLinked }: { orgId: string; rec: Rec; onClose: () => void; onLinked: () => void }) {
+  const [term, setTerm] = useState(rec.supplierName?.split(' ')[0] ?? rec.supplierNif)
+  const [q, setQ] = useState(term)
+  useEffect(() => { const t = setTimeout(() => setQ(term.trim()), 350); return () => clearTimeout(t) }, [term])
+  const year = new Date(rec.issueDate).getFullYear()
+  const { data } = useLoad(() => api.get<{ items: Invoice[] }>(`/api/orgs/${orgId}/invoices?year=${year}&pageSize=50${q ? `&q=${encodeURIComponent(q)}` : ''}`), [orgId, q, year])
+  const [err, setErr] = useState<string | null>(null)
+
+  return (
+    <Modal title="Associar a um documento carregado" onClose={onClose}>
+      <p className="small muted">{rec.supplierName} · {rec.documentNumber} · {date(rec.issueDate)} · <b>{eur(rec.total)}</b></p>
+      <input placeholder="Pesquisar documentos…" value={term} onChange={e => setTerm(e.target.value)} autoFocus />
+      <ErrorBox error={err} />
+      <div className="link-list">
+        {data?.items.map(i => (
+          <button key={i.id} className="popover-item" onClick={async () => {
+            try { await api.post(`/api/orgs/${orgId}/efatura/records/${rec.id}/link`, { invoiceId: i.id }); onLinked() } catch (e) { setErr((e as Error).message) }
+          }}>
+            <span className="org-text">
+              <span className="org-name">{i.supplierName ?? i.fileName ?? 'Documento'} {i.subDocuments.length > 1 && <span className="pill">{i.subDocuments.length} faturas</span>}</span>
+              <span className="org-tag">{date(i.issueDate)} · {i.documentNumber ?? '—'} · {eur(i.totalAmount)}{i.collectedInEFatura ? ' · já ligado a outra linha' : ''}</span>
+            </span>
+          </button>
+        ))}
+        {data?.items.length === 0 && <p className="muted small">Nenhum documento encontrado.</p>}
+      </div>
+    </Modal>
   )
 }
