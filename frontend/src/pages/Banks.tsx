@@ -48,6 +48,30 @@ export default function Banks() {
     } catch (e) { setErr((e as Error).message) }
   }
 
+  async function removeImport(i: Import) {
+    if (!account) return
+    const text = i.transactionsNew === 0
+      ? `Apagar a importação "${i.fileName}"? Não tem movimentos novos (eram todos repetidos).`
+      : `Apagar a importação "${i.fileName}" e os seus ${i.transactionsNew} movimentos?\n\nOs movimentos que também constam noutro extrato carregado são mantidos nesse extrato.`
+    if (!confirm(text)) return
+    setErr(null); setWarnings([])
+    try {
+      const r = await api.del<{ deleted: number; kept: number; warnings: string[] }>(`/api/orgs/${orgId}/bank-accounts/${account.id}/statements/${i.id}`)
+      setResult(`Importação apagada: ${r.deleted} movimento(s) removido(s)${r.kept ? `, ${r.kept} mantido(s) porque também constam noutro extrato` : ''}.`)
+      setWarnings(r.warnings ?? [])
+      reload(); reloadTx(); reloadSug()
+    } catch (e) { setErr((e as Error).message) }
+  }
+
+  async function removeDuplicateImports() {
+    if (!account || !confirm('Remover todas as importações desta conta que não trouxeram movimentos novos?')) return
+    try {
+      const r = await api.del<{ removed: number }>(`/api/orgs/${orgId}/bank-accounts/${account.id}/statements/duplicates`)
+      setResult(`${r.removed} importação(ões) removida(s).`)
+      reload()
+    } catch (e) { setErr((e as Error).message) }
+  }
+
   async function match(txId: string, invoiceId: string | null) {
     await api.post(`/api/orgs/${orgId}/bank-accounts/${account!.id}/transactions/${txId}/match`, { invoiceId })
     reloadTx(); reloadSug()
@@ -76,14 +100,19 @@ export default function Banks() {
                 {account.coverage.length === 0 && <span className="muted">Nenhum extrato carregado.</span>}
               </div>
               <table className="table small">
-                <thead><tr><th>Ficheiro</th><th>Período</th><th>Novos</th><th>Repetidos</th><th>Carregado</th></tr></thead>
+                <thead><tr><th>Ficheiro</th><th>Período</th><th>Novos</th><th>Repetidos</th><th>Carregado</th><th></th></tr></thead>
                 <tbody>{account.imports.map(i => (
-                  <tr key={i.id} title={i.overlapWarning}>
-                    <td>{i.fileName} {i.overlapWarning && '⚠️'}</td><td>{date(i.periodStart)} – {date(i.periodEnd)}</td>
+                  <tr key={i.id} title={i.overlapWarning} className={i.transactionsNew === 0 ? 'muted' : ''}>
+                    <td>{i.fileName} {i.overlapWarning && '⚠️'}{i.transactionsNew === 0 && <span className="pill">só repetidos</span>}</td>
+                    <td>{date(i.periodStart)} – {date(i.periodEnd)}</td>
                     <td>{i.transactionsNew}</td><td>{i.transactionsDuplicate}</td><td>{dateTime(i.createdAt)}</td>
+                    <td><button className="link danger" onClick={() => removeImport(i)}>Apagar</button></td>
                   </tr>))}
                 </tbody>
               </table>
+              {account.imports.some(i => i.transactionsNew === 0) && (
+                <button className="link" onClick={removeDuplicateImports}>Remover as {account.imports.filter(i => i.transactionsNew === 0).length} importações só com movimentos repetidos</button>
+              )}
             </Card>
           </div>
 

@@ -200,16 +200,67 @@ public static class BankEndpoints
             return Results.Ok(new { import, method, warnings = errors.Take(50) });
         }).DisableAntiforgery();
 
-        g.MapDelete("{id:guid}/statements/{importId:guid}", async (Guid orgId, Guid id, Guid importId, AccessService access, AppDbContext db, CancellationToken ct) =>
+        // Remove a statement import. Movements that also appear in another (overlapping) statement of the same account
+        // are kept and moved to that statement — in the other import they had been skipped as duplicates.
+        g.MapDelete("{id:guid}/statements/{importId:guid}", async (Guid orgId, Guid id, Guid importId, AccessService access,
+            CurrentUser me, FileStorage storage, AuditService audit, AppDbContext db, CancellationToken ct) =>
         {
-            await access.RequireManageAsync(orgId, ct);
+            await access.RequireSeeAllAsync(orgId, ct);
+            if (!await db.BankAccounts.AnyAsync(b => b.Id == id && b.OrganizationId == orgId, ct)) throw new AppException(404, "Conta não encontrada");
             var import = await db.BankStatementImports.FirstOrDefaultAsync(i => i.Id == importId && i.BankAccountId == id, ct)
                          ?? throw new AppException(404, "Importação não encontrada");
-            if (!await db.BankAccounts.AnyAsync(b => b.Id == id && b.OrganizationId == orgId, ct)) throw new AppException(404, "Conta não encontrada");
-            await db.BankTransactions.Where(t => t.ImportId == importId).ExecuteDeleteAsync(ct);
+
+            var txs = await db.BankTransactions.Where(t => t.ImportId == importId).ToListAsync(ct);
+            var warnings = new List<string>();
+            var moved = 0;
+            if (txs.Count > 0)
+            {
+                var others = await db.BankStatementImports
+                    .Where(i => i.BankAccountId == id && i.Id != importId && i.PeriodStart <= import.PeriodEnd && i.PeriodEnd >= import.PeriodStart)
+                    .ToListAsync(ct);
+                var remaining = txs.ToDictionary(t => t.Hash);
+                foreach (var other in others)
+                {
+                    if (remaining.Count == 0) break;
+                    var file = other.FileId is { } fid ? await db.Files.FirstOrDefaultAsync(f => f.Id == fid, ct) : null;
+                    var isCsv = file != null && !file.ContentType.Contains("pdf", StringComparison.OrdinalIgnoreCase);
+                    if (!isCsv || !File.Exists(storage.FullPath(file!)))
+                    {
+                        warnings.Add($"O extrato \"{other.FileName}\" ({other.PeriodStart:dd/MM/yyyy}–{other.PeriodEnd:dd/MM/yyyy}) sobrepõe-se a este e não pôde ser verificado automaticamente; se faltarem movimentos, volte a carregá-lo.");
+                        continue;
+                    }
+                    var (rows, _) = BankStatementParser.Parse(await storage.ReadAsync(file!, ct));
+                    var hashes = BankStatementParser.Hash(rows).Select(h => h.Hash).ToHashSet();
+                    foreach (var hash in remaining.Keys.Where(hashes.Contains).ToList())
+                    {
+                        remaining[hash].ImportId = other.Id;
+                        remaining.Remove(hash);
+                        other.TransactionsNew++;
+                        other.TransactionsDuplicate = Math.Max(0, other.TransactionsDuplicate - 1);
+                        moved++;
+                    }
+                }
+                db.BankTransactions.RemoveRange(remaining.Values);
+            }
             db.BankStatementImports.Remove(import);
+            audit.Log(orgId, me.Id, "bank.import.delete", nameof(BankStatementImport), import.Id, $"{import.FileName}: -{txs.Count - moved}, mantidos {moved}");
             await db.SaveChangesAsync(ct);
-            return Results.NoContent();
+            return Results.Ok(new { deleted = txs.Count - moved, kept = moved, warnings });
+        });
+
+        // Remove every import of the account that brought nothing new (all movements were duplicates).
+        g.MapDelete("{id:guid}/statements/duplicates", async (Guid orgId, Guid id, AccessService access, CurrentUser me,
+            AuditService audit, AppDbContext db, CancellationToken ct) =>
+        {
+            await access.RequireSeeAllAsync(orgId, ct);
+            if (!await db.BankAccounts.AnyAsync(b => b.Id == id && b.OrganizationId == orgId, ct)) throw new AppException(404, "Conta não encontrada");
+            var empty = await db.BankStatementImports
+                .Where(i => i.BankAccountId == id && !db.BankTransactions.Any(t => t.ImportId == i.Id))
+                .ToListAsync(ct);
+            db.BankStatementImports.RemoveRange(empty);
+            audit.Log(orgId, me.Id, "bank.import.delete-duplicates", data: $"{empty.Count} importações");
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new { removed = empty.Count });
         });
 
         g.MapGet("{id:guid}/transactions", async (Guid orgId, Guid id, int? year, int? month, bool? unmatched, AccessService access, AppDbContext db, CancellationToken ct) =>

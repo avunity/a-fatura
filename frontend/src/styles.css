@@ -257,3 +257,4 @@ img.preview, iframe.preview { color-scheme: light; }
 .save-row { display: flex; align-items: center; gap: 8px; padding-top: 4px; }
 .save-row .spacer { flex: 1; }
 .save-row.dirty { border-top: 1px dashed var(--warn-line); padding-top: 10px; }
+button.link.danger { color: var(--bad); }
