@@ -210,10 +210,51 @@ public static class InvoiceEndpoints
                 .ExecuteUpdateAsync(s => s.SetProperty(r => r.MatchedInvoiceId, (Guid?)null), ct);
             await db.BankTransactions.Where(t => t.MatchedInvoiceId == inv.Id)
                 .ExecuteUpdateAsync(s => s.SetProperty(t => t.MatchedInvoiceId, (Guid?)null), ct);
+            await db.Invoices.Where(i => i.DuplicateOfId == inv.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(i => i.DuplicateOfId, (Guid?)null), ct);
             db.Invoices.Remove(inv);
             audit.Log(orgId, me.Id, "invoice.delete", nameof(Invoice), inv.Id, $"{inv.SupplierNif} {inv.DocumentNumber}");
             await db.SaveChangesAsync(ct);
             return Results.NoContent();
+        });
+
+        // Bulk delete (e.g. wrong files uploaded, or e-mail attachments that are not invoices).
+        // Same rules as the single delete, applied per document; the ones not allowed are reported back.
+        g.MapPost("bulk-delete", async (Guid orgId, BulkIds body, AccessService access, CurrentUser me, AuditService audit,
+            AppDbContext db, CancellationToken ct) =>
+        {
+            var a = await access.GetAsync(orgId, ct);
+            var ids = (body.Ids ?? new List<Guid>()).Distinct().ToList();
+            if (ids.Count == 0) throw new AppException(400, "Nenhuma fatura selecionada");
+            if (ids.Count > 500) throw new AppException(400, "Máximo de 500 faturas por operação");
+
+            var invoices = await access.Invoices(a).Where(i => ids.Contains(i.Id)).ToListAsync(ct);
+            var closed = await db.PeriodCloses.Where(p => p.OrganizationId == orgId).Select(p => new { p.Year, p.Month }).ToListAsync(ct);
+            var skipped = new List<object>();
+            var toDelete = new List<Invoice>();
+            foreach (var inv in invoices)
+            {
+                if (!a.CanManage && inv.UploadedByUserId != me.Id)
+                    skipped.Add(new { inv.Id, inv.SupplierName, Reason = "Carregada por outro utilizador" });
+                else if (!a.IsAccountant && !a.IsAdmin && inv.IssueDate is { } d && closed.Any(c => c.Year == d.Year && c.Month == d.Month))
+                    skipped.Add(new { inv.Id, inv.SupplierName, Reason = $"Período {d:MM/yyyy} fechado pelo contabilista" });
+                else toDelete.Add(inv);
+            }
+
+            var delIds = toDelete.Select(i => i.Id).ToList();
+            if (delIds.Count > 0)
+            {
+                await db.EFaturaRecords.Where(r => r.MatchedInvoiceId != null && delIds.Contains(r.MatchedInvoiceId.Value))
+                    .ExecuteUpdateAsync(x => x.SetProperty(r => r.MatchedInvoiceId, (Guid?)null), ct);
+                await db.BankTransactions.Where(t => t.MatchedInvoiceId != null && delIds.Contains(t.MatchedInvoiceId.Value))
+                    .ExecuteUpdateAsync(x => x.SetProperty(t => t.MatchedInvoiceId, (Guid?)null), ct);
+                await db.Invoices.Where(i => i.DuplicateOfId != null && delIds.Contains(i.DuplicateOfId.Value))
+                    .ExecuteUpdateAsync(x => x.SetProperty(i => i.DuplicateOfId, (Guid?)null), ct);
+                db.Invoices.RemoveRange(toDelete);
+                audit.Log(orgId, me.Id, "invoice.bulk-delete", data: $"{delIds.Count} documentos");
+                await db.SaveChangesAsync(ct);
+            }
+            return Results.Ok(new { deleted = delIds.Count, skipped, notFound = ids.Count - invoices.Count });
         });
 
         g.MapGet("summary", async (Guid orgId, int year, int? month, AccessService access, CancellationToken ct) =>
@@ -279,6 +320,7 @@ public static class InvoiceEndpoints
     }
 
     public record ReimbursementUpdate(ReimbursementStatus Status);
+    public record BulkIds(List<Guid>? Ids);
 
     private static IQueryable<Invoice> Filter(IQueryable<Invoice> q, InvoiceQuery f)
     {

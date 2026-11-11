@@ -226,3 +226,22 @@ label.inline { flex-direction: row; align-items: center; gap: 6px; }
 .theme-switch button { flex: 1; border: 0; background: transparent; padding: 5px 6px; border-radius: 7px; font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
 .theme-switch button.on { background: var(--panel); color: var(--text); box-shadow: 0 1px 3px var(--shadow); }
 img.preview, iframe.preview { color-scheme: light; }
+
+/* Invoice list: selection, bulk bar, column picker */
+.col-picker { position: relative; }
+.col-picker > button { display: inline-flex; align-items: center; gap: 6px; }
+.col-popover { left: auto; right: 0; width: 280px; max-height: 70vh; overflow: auto; }
+.col-head { display: flex; justify-content: space-between; align-items: center; padding: 4px 8px 8px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.col-row { display: flex; align-items: center; justify-content: space-between; padding: 3px 8px; border-radius: 8px; }
+.col-row:hover { background: var(--hover); }
+.col-row label { color: var(--text); font-size: 13px; }
+.col-move .icon-btn { padding: 2px 6px; font-size: 13px; }
+.col-move .icon-btn:disabled { opacity: .3; }
+.table th.sel, .table td.sel { width: 32px; padding-right: 0; }
+.table tr.selected td { background: var(--accent-bg); }
+.bulk-bar { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 10px;
+  background: var(--panel); border: 1px solid var(--accent); box-shadow: 0 6px 18px var(--shadow); }
+.bulk-bar .count { font-weight: 600; }
+.bulk-bar .spacer { flex: 1; }
+.list-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.list-toolbar .spacer { flex: 1; }
