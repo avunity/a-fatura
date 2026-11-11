@@ -17,7 +17,7 @@ Os artefactos ficam em **Actions → execução → Artifacts** durante 30 dias.
 ```bash
 git tag v1.0.0 && git push origin v1.0.0
 ```
-Na VPS, usa `IMAGE_TAG=1.0.0` no `.env` para fixar a versão (ou `latest` para seguir o `main`) e depois corre `./deploy/update.sh`.
+Na VPS, usa `AFATURA_IMAGE_TAG=1.0.0` no `.env` para fixar a versão (ou `latest` para seguir o `main`) e depois corre `./deploy/update.sh`.
 
 ## VPS: acesso às imagens (pacotes privados)
 **Com o gh CLI já autenticado na VPS (mais simples):** o `deploy/ghcr-login.sh` usa o `gh auth token`. Basta acrescentar uma vez o scope dos pacotes: `gh auth refresh -h github.com -s read:packages`.

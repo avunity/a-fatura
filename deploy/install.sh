@@ -5,6 +5,9 @@
 # - waits for the API health check
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# Generic variables exported in the shell (e.g. after sourcing another project's .env) override .env in
+# docker compose — never let them leak into this project.
+unset IMAGE_PREFIX IMAGE_TAG COMPOSE_FILE COMPOSE_PROJECT_NAME
 
 command -v docker >/dev/null || { echo "Docker não está instalado"; exit 1; }
 docker compose version >/dev/null || { echo "Falta o plugin 'docker compose'"; exit 1; }

@@ -25,7 +25,7 @@ services:
     networks: [internal]
 
   api:
-    image: ${IMAGE_PREFIX:-ghcr.io/avunity/a-fatura}-api:${IMAGE_TAG:-latest}
+    image: ${AFATURA_IMAGE_PREFIX:-ghcr.io/avunity/a-fatura}-api:${AFATURA_IMAGE_TAG:-latest}
     build:
       context: ./backend
       args:
@@ -65,7 +65,7 @@ services:
     networks: [internal]
 
   web:
-    image: ${IMAGE_PREFIX:-ghcr.io/avunity/a-fatura}-web:${IMAGE_TAG:-latest}
+    image: ${AFATURA_IMAGE_PREFIX:-ghcr.io/avunity/a-fatura}-web:${AFATURA_IMAGE_TAG:-latest}
     build: ./frontend
     restart: unless-stopped
     depends_on: [api]

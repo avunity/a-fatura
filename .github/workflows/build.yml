@@ -183,4 +183,4 @@ jobs:
             dist/a-fatura-web.zip
           body: |
             Imagens Docker: `${{ env.IMAGE_PREFIX }}-api:${{ github.ref_name }}` e `${{ env.IMAGE_PREFIX }}-web:${{ github.ref_name }}` (sem o "v").
-            Na VPS: `IMAGE_TAG=<versão>` no `.env` → `./deploy/update.sh`.
+            Na VPS: `AFATURA_IMAGE_TAG=<versão>` no `.env` → `./deploy/update.sh`.

@@ -3,6 +3,9 @@
 # (pull first: it doesn't touch running containers, and .env may reference compose files that only exist in the new version)
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# Generic variables exported in the shell (e.g. after sourcing another project's .env) override .env in
+# docker compose — never let them leak into this project.
+unset IMAGE_PREFIX IMAGE_TAG COMPOSE_FILE COMPOSE_PROJECT_NAME
 
 git pull --ff-only
 set -a; source .env; set +a
