@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { api } from '../api'
 import { useSession } from '../session'
 import { Card, ErrorBox, Page } from '../components/ui'
+import ThemeSwitch from '../components/ThemeSwitch'
 
 /** Personal account page — available to every profile, with or without an organization selected. */
 export default function Account() {
@@ -33,6 +34,10 @@ export default function Account() {
           {me && me.memberships.length > 0 && <><dt>Entidades</dt><dd>{me.memberships.map(m => m.name).join(', ')}</dd></>}
           {me && me.clients.length > 0 && <><dt>Clientes</dt><dd>{me.clients.length}</dd></>}
         </dl>
+      </Card>
+      <Card title="Aparência">
+        <p className="small muted">"Sistema" segue o modo claro/escuro do seu computador ou telemóvel.</p>
+        <div style={{ maxWidth: 360 }}><ThemeSwitch /></div>
       </Card>
       <Card title="Alterar palavra-passe">
         <ErrorBox error={err} />

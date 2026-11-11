@@ -51,6 +51,10 @@ class Api(private val settings: Settings = Settings()) {
     var token: String?
         get() = settings.getStringOrNull("token")
         set(v) = if (v == null) settings.remove("token") else settings.putString("token", v)
+    /** "system" | "light" | "dark" */
+    var theme: String
+        get() = settings.getString("theme", "system")
+        set(v) = settings.putString("theme", v)
     var orgId: String?
         get() = settings.getStringOrNull("orgId")
         set(v) = if (v == null) settings.remove("orgId") else settings.putString("orgId", v)

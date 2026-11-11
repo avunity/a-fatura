@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { useOrg, useSession } from '../session'
 import { Icon, type IconName } from './icons'
+import ThemeSwitch from './ThemeSwitch'
 
 type Inbox = { total: number; organizations: { organizationId: string; unread: number }[] }
 type OrgOption = { id: string; name: string; tag: string }
@@ -173,6 +174,7 @@ export default function Layout() {
             </button>
             {userMenu && (
               <div className="popover up">
+                <ThemeSwitch />
                 <button className="popover-item" onClick={() => nav('/account')}><Icon name="user" size={16} /> A minha conta</button>
                 <button className="popover-item danger" onClick={logout}><Icon name="logout" size={16} /> Terminar sessão</button>
               </div>

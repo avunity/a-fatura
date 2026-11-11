@@ -94,7 +94,8 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun App(api: Api = remember { Api() }) {
-    AFaturaTheme {
+    var themeMode by remember { mutableStateOf(api.theme) }
+    AFaturaTheme(themeMode) {
         var me by remember { mutableStateOf<Me?>(null) }
         var checking by remember { mutableStateOf(api.token != null) }
 
@@ -107,7 +108,7 @@ fun App(api: Api = remember { Api() }) {
             when {
                 checking -> Splash()
                 me == null -> LoginScreen(api) { me = it }
-                else -> MainScreen(api, me!!) { api.token = null; me = null }
+                else -> MainScreen(api, me!!, themeMode, { api.theme = it; themeMode = it }) { api.token = null; me = null }
             }
         }
     }
@@ -153,7 +154,7 @@ private fun LoginScreen(api: Api, onLogged: (Me) -> Unit) {
         Card(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp).offset(y = (-28).dp),
             shape = MaterialTheme.shapes.large,
-            colors = CardDefaults.cardColors(containerColor = Color.White),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
         ) {
             Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -215,7 +216,7 @@ private data class Pending(val id: Long, val file: CapturedFile, val failed: Str
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MainScreen(api: Api, me: Me, onLogout: () -> Unit) {
+private fun MainScreen(api: Api, me: Me, themeMode: String, onTheme: (String) -> Unit, onLogout: () -> Unit) {
     val orgs = remember(me) {
         me.memberships.map { Triple(it.organizationId, it.name, if (it.type == "Individual") "Pessoal" else if (it.role == "Manager") "Gestor" else "Colaborador") } +
             me.clients.filter { c -> me.memberships.none { it.organizationId == c.organizationId } }.map { Triple(it.organizationId, it.name, "Cliente") }
@@ -271,7 +272,7 @@ private fun MainScreen(api: Api, me: Me, onLogout: () -> Unit) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            NavigationBar(containerColor = Color.White, tonalElevation = 0.dp) {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
                 Tab.entries.forEach { t ->
                     NavigationBarItem(
                         selected = tab == t, onClick = { tab = t },
@@ -284,7 +285,7 @@ private fun MainScreen(api: Api, me: Me, onLogout: () -> Unit) {
         Column(Modifier.fillMaxSize().padding(padding)) {
             // Header with organization switcher
             Row(
-                Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 16.dp, vertical = 12.dp),
+                Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Logo(36.dp)
@@ -295,12 +296,12 @@ private fun MainScreen(api: Api, me: Me, onLogout: () -> Unit) {
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text(current?.second ?: "A-Fatura", fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(current?.third ?: "", style = MaterialTheme.typography.bodySmall, color = Brand.Muted)
+                        Text(current?.third ?: "", style = MaterialTheme.typography.bodySmall, color = C.muted)
                     }
-                    if (orgs.size > 1) Icon(Icons.Outlined.UnfoldMore, "Trocar entidade", tint = Brand.Muted)
+                    if (orgs.size > 1) Icon(Icons.Outlined.UnfoldMore, "Trocar entidade", tint = C.muted)
                 }
             }
-            HorizontalDivider(color = Brand.Line)
+            HorizontalDivider(color = C.line)
 
             when (tab) {
                 Tab.Send -> SendTab(
@@ -316,13 +317,13 @@ private fun MainScreen(api: Api, me: Me, onLogout: () -> Unit) {
                     onRefresh = { scope.launch { refreshing = true; refresh(); refreshing = false } },
                     modifier = Modifier.fillMaxSize(),
                 ) { DocsTab(recent) }
-                Tab.Account -> AccountTab(api, me, onLogout)
+                Tab.Account -> AccountTab(api, me, themeMode, onTheme, onLogout)
             }
         }
     }
 
     if (orgSheet) {
-        ModalBottomSheet(onDismissRequest = { orgSheet = false }, containerColor = Color.White) {
+        ModalBottomSheet(onDismissRequest = { orgSheet = false }, containerColor = MaterialTheme.colorScheme.surface) {
             Text("Escolher entidade", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
             orgs.forEach { (id, name, tag) ->
                 Row(
@@ -333,9 +334,9 @@ private fun MainScreen(api: Api, me: Me, onLogout: () -> Unit) {
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
                         Text(name, fontWeight = FontWeight.Medium)
-                        Text(tag, style = MaterialTheme.typography.bodySmall, color = Brand.Muted)
+                        Text(tag, style = MaterialTheme.typography.bodySmall, color = C.muted)
                     }
-                    if (id == orgId) Icon(Icons.Outlined.CheckCircle, null, tint = Brand.Teal)
+                    if (id == orgId) Icon(Icons.Outlined.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
                 }
             }
             Spacer(Modifier.height(24.dp))
@@ -377,8 +378,8 @@ private fun SendTab(
         item {
             OutlinedButton(
                 onClick = { capture.pickFile() }, modifier = Modifier.fillMaxWidth().height(52.dp),
-                shape = MaterialTheme.shapes.medium, border = BorderStroke(1.dp, Brand.Line),
-                colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White),
+                shape = MaterialTheme.shapes.medium, border = BorderStroke(1.dp, C.line),
+                colors = ButtonDefaults.outlinedButtonColors(containerColor = MaterialTheme.colorScheme.surface),
             ) {
                 Icon(Icons.Outlined.UploadFile, null)
                 Spacer(Modifier.width(8.dp))
@@ -391,15 +392,15 @@ private fun SendTab(
                 if (projects.isNotEmpty())
                     PickerRow(Icons.Outlined.Folder, "Projeto", projects.firstOrNull { it.id == projectId }?.name ?: "Sem projeto",
                         listOf(null to "Sem projeto") + projects.map { it.id to it.name }, onProject)
-                if (projects.isNotEmpty() && vehicles.isNotEmpty()) HorizontalDivider(color = Brand.Line)
+                if (projects.isNotEmpty() && vehicles.isNotEmpty()) HorizontalDivider(color = C.line)
                 if (vehicles.isNotEmpty())
                     PickerRow(Icons.Outlined.DirectionsCar, "Viatura", vehicles.firstOrNull { it.id == vehicleId }?.plate ?: "Detetar automaticamente",
                         listOf(null to "Detetar automaticamente") + vehicles.map { it.id to it.plate }, onVehicle)
-                if (projects.isNotEmpty() || vehicles.isNotEmpty()) HorizontalDivider(color = Brand.Line)
+                if (projects.isNotEmpty() || vehicles.isNotEmpty()) HorizontalDivider(color = C.line)
                 Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Paguei do meu bolso", fontWeight = FontWeight.Medium)
-                        Text("Pedir reembolso à empresa", style = MaterialTheme.typography.bodySmall, color = Brand.Muted)
+                        Text("Pedir reembolso à empresa", style = MaterialTheme.typography.bodySmall, color = C.muted)
                     }
                     Switch(paidPersonally, onPaid)
                 }
@@ -407,18 +408,18 @@ private fun SendTab(
         }
 
         items(queue, key = { it.id }) { p ->
-            Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = MaterialTheme.shapes.medium,
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), shape = MaterialTheme.shapes.medium,
                 modifier = Modifier.fillMaxWidth().clickable(enabled = p.failed != null) { onRetry(p) }) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(if (p.failed != null) Icons.Outlined.ErrorOutline else Icons.Outlined.UploadFile, null,
-                            tint = if (p.failed != null) Brand.Bad else Brand.Info)
+                            tint = if (p.failed != null) C.bad else C.info)
                         Spacer(Modifier.width(10.dp))
                         Text(p.file.fileName, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium)
-                        if (p.failed != null) Icon(Icons.Outlined.Refresh, "Repetir", tint = Brand.Muted)
+                        if (p.failed != null) Icon(Icons.Outlined.Refresh, "Repetir", tint = C.muted)
                     }
                     if (p.failed == null) LinearProgressIndicator(Modifier.fillMaxWidth().clip(CircleShape))
-                    else Text("Falhou: ${p.failed} — toque para repetir", style = MaterialTheme.typography.bodySmall, color = Brand.Bad)
+                    else Text("Falhou: ${p.failed} — toque para repetir", style = MaterialTheme.typography.bodySmall, color = C.bad)
                 }
             }
         }
@@ -437,11 +438,11 @@ private fun SendTab(
             item {
                 SectionCard {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.Mail, null, tint = Brand.Teal)
+                        Icon(Icons.Outlined.Mail, null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text("Reencaminhe faturas por email", fontWeight = FontWeight.Medium)
-                            Text(addr, style = MaterialTheme.typography.bodySmall, color = Brand.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(addr, style = MaterialTheme.typography.bodySmall, color = C.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                         IconButton(onClick = { clipboard.setText(AnnotatedString(addr)) }) { Icon(Icons.Outlined.ContentCopy, "Copiar") }
                     }
@@ -454,8 +455,8 @@ private fun SendTab(
 @Composable
 private fun SectionCard(content: @Composable () -> Unit) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color.White), shape = MaterialTheme.shapes.medium,
-        border = BorderStroke(1.dp, Brand.Line), modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), shape = MaterialTheme.shapes.medium,
+        border = BorderStroke(1.dp, C.line), modifier = Modifier.fillMaxWidth(),
     ) { Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) { content() } }
 }
 
@@ -467,13 +468,13 @@ private fun PickerRow(icon: ImageVector, label: String, value: String, options: 
             Modifier.fillMaxWidth().clickable { open = true }.padding(vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(icon, null, tint = Brand.Teal)
+            Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(label, style = MaterialTheme.typography.bodySmall, color = Brand.Muted)
+                Text(label, style = MaterialTheme.typography.bodySmall, color = C.muted)
                 Text(value, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            Icon(Icons.Outlined.UnfoldMore, null, tint = Brand.Muted)
+            Icon(Icons.Outlined.UnfoldMore, null, tint = C.muted)
         }
         DropdownMenu(open, { open = false }) {
             options.forEach { (id, text) -> DropdownMenuItem(text = { Text(text) }, onClick = { onPick(id); open = false }) }
@@ -485,12 +486,13 @@ private fun PickerRow(icon: ImageVector, label: String, value: String, options: 
 
 private data class StatusStyle(val label: String, val fg: Color, val bg: Color, val icon: ImageVector)
 
+@Composable
 private fun statusStyle(s: String, flagged: Boolean): StatusStyle = when (s) {
-    "Processed" -> StatusStyle("Processada", Brand.Ok, Brand.OkSoft, Icons.Outlined.CheckCircle)
-    "NeedsReview" -> StatusStyle("Rever", Brand.Warn, Brand.WarnSoft, Icons.Outlined.Warning)
-    "Failed" -> StatusStyle("Erro", Brand.Bad, Brand.BadSoft, Icons.Outlined.ErrorOutline)
-    "Processing" -> StatusStyle("A processar", Brand.Info, Brand.InfoSoft, Icons.Outlined.HourglassTop)
-    else -> StatusStyle(if (flagged) "Rever" else "Em fila", Brand.Info, Brand.InfoSoft, Icons.Outlined.HourglassTop)
+    "Processed" -> StatusStyle("Processada", C.ok, C.okSoft, Icons.Outlined.CheckCircle)
+    "NeedsReview" -> StatusStyle("Rever", C.warn, C.warnSoft, Icons.Outlined.Warning)
+    "Failed" -> StatusStyle("Erro", C.bad, C.badSoft, Icons.Outlined.ErrorOutline)
+    "Processing" -> StatusStyle("A processar", C.info, C.infoSoft, Icons.Outlined.HourglassTop)
+    else -> StatusStyle(if (flagged) "Rever" else "Em fila", C.info, C.infoSoft, Icons.Outlined.HourglassTop)
 }
 
 @Composable
@@ -511,21 +513,21 @@ private fun DocsTab(recent: List<InvoiceItem>) {
         }
         if (shown.isEmpty()) item {
             Column(Modifier.fillMaxWidth().padding(top = 60.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Outlined.Receipt, null, tint = Brand.Line, modifier = Modifier.size(64.dp))
+                Icon(Icons.Outlined.Receipt, null, tint = C.line, modifier = Modifier.size(64.dp))
                 Spacer(Modifier.height(12.dp))
-                Text("Sem documentos", color = Brand.Muted)
+                Text("Sem documentos", color = C.muted)
             }
         }
         items(shown, key = { it.id }) { InvoiceRow(it) }
-        item { Text("Puxe para baixo para atualizar", style = MaterialTheme.typography.bodySmall, color = Brand.Muted, modifier = Modifier.fillMaxWidth().padding(8.dp)) }
+        item { Text("Puxe para baixo para atualizar", style = MaterialTheme.typography.bodySmall, color = C.muted, modifier = Modifier.fillMaxWidth().padding(8.dp)) }
     }
 }
 
 @Composable
 private fun InvoiceRow(inv: InvoiceItem) {
     val st = statusStyle(inv.status, inv.flags.isNotEmpty())
-    Card(colors = CardDefaults.cardColors(containerColor = Color.White), shape = MaterialTheme.shapes.medium,
-        border = BorderStroke(1.dp, Brand.Line), modifier = Modifier.fillMaxWidth()) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), shape = MaterialTheme.shapes.medium,
+        border = BorderStroke(1.dp, C.line), modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(st.bg), contentAlignment = Alignment.Center) {
                 Icon(st.icon, null, tint = st.fg, modifier = Modifier.size(22.dp))
@@ -534,7 +536,7 @@ private fun InvoiceRow(inv: InvoiceItem) {
             Column(Modifier.weight(1f)) {
                 Text(inv.supplierName ?: inv.fileName ?: "Documento", fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 val meta = listOfNotNull(ptDate(inv.issueDate), inv.categoryName, inv.vehiclePlate).joinToString(" · ")
-                Text(meta.ifEmpty { "a ler o documento…" }, style = MaterialTheme.typography.bodySmall, color = Brand.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(meta.ifEmpty { "a ler o documento…" }, style = MaterialTheme.typography.bodySmall, color = C.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Spacer(Modifier.width(8.dp))
             Column(horizontalAlignment = Alignment.End) {
@@ -551,25 +553,25 @@ private fun InvoiceRow(inv: InvoiceItem) {
 // ───────────────────────── Conta ─────────────────────────
 
 @Composable
-private fun AccountTab(api: Api, me: Me, onLogout: () -> Unit) {
+private fun AccountTab(api: Api, me: Me, themeMode: String, onTheme: (String) -> Unit, onLogout: () -> Unit) {
     val roleLabel = when (me.role) { "Accountant" -> "Contabilista"; "Admin" -> "Backoffice"; else -> "Utilizador" }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
             SectionCard {
                 Row(Modifier.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Avatar(me.name.ifBlank { me.email }, 56.dp, bg = Color(0xFFE0E7FF), fg = Color(0xFF3730A3))
+                    Avatar(me.name.ifBlank { me.email }, 56.dp, bg = C.userBg, fg = C.userFg)
                     Spacer(Modifier.width(14.dp))
                     Column {
                         Text(me.name, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                        Text(me.email, color = Brand.Muted, style = MaterialTheme.typography.bodySmall)
-                        Text(roleLabel, color = Brand.Teal, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                        Text(me.email, color = C.muted, style = MaterialTheme.typography.bodySmall)
+                        Text(roleLabel, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
                     }
                 }
             }
         }
         if (me.memberships.isNotEmpty()) item {
             SectionCard {
-                Text("Entidades", style = MaterialTheme.typography.bodySmall, color = Brand.Muted, modifier = Modifier.padding(top = 6.dp))
+                Text("Entidades", style = MaterialTheme.typography.bodySmall, color = C.muted, modifier = Modifier.padding(top = 6.dp))
                 me.memberships.forEach { m ->
                     Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Avatar(m.name, 32.dp)
@@ -577,7 +579,7 @@ private fun AccountTab(api: Api, me: Me, onLogout: () -> Unit) {
                         Column {
                             Text(m.name, fontWeight = FontWeight.Medium)
                             Text(if (m.type == "Individual") "Pessoal" else if (m.role == "Manager") "Gestor" else "Colaborador",
-                                style = MaterialTheme.typography.bodySmall, color = Brand.Muted)
+                                style = MaterialTheme.typography.bodySmall, color = C.muted)
                         }
                     }
                 }
@@ -585,15 +587,25 @@ private fun AccountTab(api: Api, me: Me, onLogout: () -> Unit) {
         }
         item {
             SectionCard {
-                Text("Servidor", style = MaterialTheme.typography.bodySmall, color = Brand.Muted, modifier = Modifier.padding(top = 6.dp))
+                Text("Aparência", style = MaterialTheme.typography.bodySmall, color = C.muted, modifier = Modifier.padding(top = 6.dp))
+                Row(Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("light" to "Claro", "dark" to "Escuro", "system" to "Sistema").forEach { (k, l) ->
+                        FilterChip(selected = themeMode == k, onClick = { onTheme(k) }, label = { Text(l) })
+                    }
+                }
+            }
+        }
+        item {
+            SectionCard {
+                Text("Servidor", style = MaterialTheme.typography.bodySmall, color = C.muted, modifier = Modifier.padding(top = 6.dp))
                 Text(api.baseUrl, modifier = Modifier.padding(bottom = 8.dp))
             }
         }
         item {
             OutlinedButton(
                 onClick = onLogout, modifier = Modifier.fillMaxWidth().height(52.dp), shape = MaterialTheme.shapes.medium,
-                border = BorderStroke(1.dp, Brand.BadSoft),
-                colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White, contentColor = Brand.Bad),
+                border = BorderStroke(1.dp, C.badSoft),
+                colors = ButtonDefaults.outlinedButtonColors(containerColor = MaterialTheme.colorScheme.surface, contentColor = C.bad),
             ) {
                 Icon(Icons.Outlined.Logout, null)
                 Spacer(Modifier.width(8.dp))
