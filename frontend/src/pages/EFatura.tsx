@@ -52,18 +52,18 @@ export default function EFatura() {
   const run = async (fn: () => Promise<unknown>) => { setErr(null); try { await fn(); await reload() } catch (e) { setErr((e as Error).message) } }
 
   const columns = useMemo<Col<Rec>[]>(() => [
-    { id: 'date', label: 'Data', width: 100, render: r => date(r.issueDate) },
+    { id: 'date', label: 'Data', sort: r => r.issueDate, width: 100, render: r => date(r.issueDate) },
     {
-      id: 'supplier', label: 'Emitente', width: 260, locked: true,
+      id: 'supplier', label: 'Emitente', sort: r => r.supplierName ?? r.supplierNif, width: 260, locked: true,
       render: r => <>{r.supplierName}<div className="muted small">{r.supplierNif}</div>{r.comment && <div className="comment">💬 {r.comment}</div>}</>,
     },
-    { id: 'document', label: 'Documento', width: 170, className: 'small', render: r => <>{r.documentNumber}<div className="muted">{r.atcud}</div></> },
-    { id: 'type', label: 'Tipo', width: 110, className: 'small', defaultVisible: false, render: r => r.documentType ?? '' },
-    { id: 'vat', label: 'IVA', width: 90, className: 'num', render: r => eur(r.vat) },
-    { id: 'total', label: 'Total', width: 100, className: 'num', render: r => eur(r.total) },
-    { id: 'atStatus', label: 'Situação AT', width: 110, className: 'small', render: r => r.atStatus ?? '' },
+    { id: 'document', label: 'Documento', sort: r => r.documentNumber, width: 170, className: 'small', render: r => <>{r.documentNumber}<div className="muted">{r.atcud}</div></> },
+    { id: 'type', label: 'Tipo', sort: r => r.documentType, width: 110, className: 'small', defaultVisible: false, render: r => r.documentType ?? '' },
+    { id: 'vat', label: 'IVA', sort: r => r.vat, width: 90, className: 'num', render: r => eur(r.vat) },
+    { id: 'total', label: 'Total', sort: r => r.total, width: 100, className: 'num', render: r => eur(r.total) },
+    { id: 'atStatus', label: 'Situação AT', sort: r => r.atStatus, width: 110, className: 'small', render: r => r.atStatus ?? '' },
     {
-      id: 'doc', label: 'Documento carregado', width: 230, className: 'small',
+      id: 'doc', label: 'Documento carregado', sort: r => stateOf(r), width: 230, className: 'small',
       render: r => r.matchedInvoiceId ? (
         <>
           <a href={`/o/${orgId}/invoices/${r.matchedInvoiceId}`} className="ok">✓ {r.matchedInvoiceLabel ?? 'carregado'}</a>
@@ -83,7 +83,7 @@ export default function EFatura() {
           : <button className="link" onClick={() => setLinking(r)}>Associar documento</button>}
       </>,
     },
-    { id: 'updated', label: 'Atualizado', width: 130, className: 'small muted', defaultVisible: false, render: r => dateTime(r.updatedAt) },
+    { id: 'updated', label: 'Atualizado', sort: r => r.updatedAt, width: 130, className: 'small muted', defaultVisible: false, render: r => dateTime(r.updatedAt) },
   ], [orgId, canRequest]) // eslint-disable-line react-hooks/exhaustive-deps
   const layout = useTableLayout('efatura', columns)
 

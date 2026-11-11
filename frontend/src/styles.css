@@ -292,3 +292,8 @@ button.link.danger { color: var(--bad); }
 .dt th.drop-target { box-shadow: inset 3px 0 0 var(--accent); }
 body.resizing { cursor: col-resize !important; user-select: none; }
 .col-tip { padding: 0 8px 6px; margin: 0; }
+
+.dt th.sortable { cursor: pointer; }
+.dt th.sortable:hover { color: var(--text); }
+.dt .sort-ind { margin-left: 4px; font-size: 10px; opacity: .35; }
+.dt th.sorted .sort-ind { opacity: 1; color: var(--accent); }

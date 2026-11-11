@@ -22,16 +22,16 @@ export default function Team() {
     try { await api.put(`/api/orgs/${orgId}/members/${m.id}`, body); reload() } catch (e) { setErr((e as Error).message) }
   }
   const columns = useMemo<Col<Member>[]>(() => [
-    { id: 'name', label: 'Nome', width: 240, locked: true, render: m => <>{m.name}<div className="muted small">{m.email}</div></> },
+    { id: 'name', label: 'Nome', sort: m => m.name, width: 240, locked: true, render: m => <>{m.name}<div className="muted small">{m.email}</div></> },
     {
-      id: 'role', label: 'Perfil', width: 150,
+      id: 'role', label: 'Perfil', sort: m => m.role, width: 150,
       render: m => canManage
         ? <select value={m.role} onChange={e => update(m, { role: e.target.value })}><option value="Collaborator">Colaborador</option><option value="Manager">Gestor</option></select>
         : (m.role === 'Manager' ? 'Gestor' : 'Colaborador'),
     },
-    { id: 'mailbox', label: 'Email para faturas', width: 300, className: 'small', render: m => m.mailbox ? <code onClick={() => navigator.clipboard.writeText(m.mailbox!)} title="Copiar">{m.mailbox}</code> : <span className="muted">configure Mail:InboundDomain</span> },
-    { id: 'invoices', label: 'Documentos', width: 110, className: 'num', render: m => m.invoices },
-    { id: 'last', label: 'Último envio', width: 140, className: 'small', render: m => dateTime(m.lastUpload) },
+    { id: 'mailbox', label: 'Email para faturas', sort: m => m.mailbox, width: 300, className: 'small', render: m => m.mailbox ? <code onClick={() => navigator.clipboard.writeText(m.mailbox!)} title="Copiar">{m.mailbox}</code> : <span className="muted">configure Mail:InboundDomain</span> },
+    { id: 'invoices', label: 'Documentos', sort: m => m.invoices, width: 110, className: 'num', render: m => m.invoices },
+    { id: 'last', label: 'Último envio', sort: m => m.lastUpload, width: 140, className: 'small', render: m => dateTime(m.lastUpload) },
     {
       id: 'actions', label: 'Ações', width: 180, className: 'row-actions',
       render: m => canManage && <>

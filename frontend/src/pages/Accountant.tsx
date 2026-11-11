@@ -29,19 +29,19 @@ export default function Accountant() {
   const rows = [...(data?.clients ?? [])].sort((a, b) =>
     sort === 'name' ? a.name.localeCompare(b.name) : sort === 'missing' ? b.missing - a.missing : (b.score ?? -1) - (a.score ?? -1))
   const columns = useMemo<Col<Row>[]>(() => [
-    { id: 'client', label: 'Cliente', width: 240, locked: true, render: r => <><Link to={`/o/${r.organizationId}`}>{r.name}</Link><div className="muted small">{r.nif} · {r.type === 'Individual' ? 'Particular' : 'Empresa'}</div></> },
-    { id: 'score', label: 'Pontuação', width: 100, render: r => <span className={`pill ${tone(r.score)}`}>{r.score ?? '—'}</span> },
-    { id: 'docs', label: 'Docs', width: 70, className: 'num', render: r => r.invoices },
-    { id: 'total', label: 'Total', width: 110, className: 'num', render: r => eur(r.total) },
-    { id: 'vat', label: 'IVA', width: 100, className: 'num', defaultVisible: false, render: r => eur(r.vat) },
-    { id: 'efatura', label: 'e-Fatura', width: 170, render: r => <>{r.eFaturaMatched}/{r.eFaturaRecords}{r.missing > 0 && <Link to={`/o/${r.organizationId}/efatura`} className="bad-text"> ({r.missing} em falta)</Link>}</> },
-    { id: 'coverage', label: 'Cobertura', width: 95, render: r => pct(r.coverage) },
-    { id: 'onTime', label: 'No prazo', width: 90, render: r => pct(r.onTime) },
-    { id: 'review', label: 'Rever', width: 75, render: r => r.needsReview > 0 ? <Link to={`/o/${r.organizationId}/invoices?status=NeedsReview&year=${p.year}&month=${p.month}`}>{r.needsReview}</Link> : 0 },
-    { id: 'last', label: 'Último envio', width: 110, className: 'small', render: r => date(r.lastUpload) },
-    { id: 'efUntil', label: 'e-Fatura até', width: 120, className: 'small', render: r => r.eFaturaCoveredUntil ? date(r.eFaturaCoveredUntil) : <span className="warn-text">nunca importado</span> },
+    { id: 'client', label: 'Cliente', sort: r => r.name, width: 240, locked: true, render: r => <><Link to={`/o/${r.organizationId}`}>{r.name}</Link><div className="muted small">{r.nif} · {r.type === 'Individual' ? 'Particular' : 'Empresa'}</div></> },
+    { id: 'score', label: 'Pontuação', sort: r => r.score, width: 100, render: r => <span className={`pill ${tone(r.score)}`}>{r.score ?? '—'}</span> },
+    { id: 'docs', label: 'Docs', sort: r => r.invoices, width: 70, className: 'num', render: r => r.invoices },
+    { id: 'total', label: 'Total', sort: r => r.total, width: 110, className: 'num', render: r => eur(r.total) },
+    { id: 'vat', label: 'IVA', sort: r => r.vat, width: 100, className: 'num', defaultVisible: false, render: r => eur(r.vat) },
+    { id: 'efatura', label: 'e-Fatura', sort: r => r.missing, width: 170, render: r => <>{r.eFaturaMatched}/{r.eFaturaRecords}{r.missing > 0 && <Link to={`/o/${r.organizationId}/efatura`} className="bad-text"> ({r.missing} em falta)</Link>}</> },
+    { id: 'coverage', label: 'Cobertura', sort: r => r.coverage, width: 95, render: r => pct(r.coverage) },
+    { id: 'onTime', label: 'No prazo', sort: r => r.onTime, width: 90, render: r => pct(r.onTime) },
+    { id: 'review', label: 'Rever', sort: r => r.needsReview, width: 75, render: r => r.needsReview > 0 ? <Link to={`/o/${r.organizationId}/invoices?status=NeedsReview&year=${p.year}&month=${p.month}`}>{r.needsReview}</Link> : 0 },
+    { id: 'last', label: 'Último envio', sort: r => r.lastUpload, width: 110, className: 'small', render: r => date(r.lastUpload) },
+    { id: 'efUntil', label: 'e-Fatura até', sort: r => r.eFaturaCoveredUntil, width: 120, className: 'small', render: r => r.eFaturaCoveredUntil ? date(r.eFaturaCoveredUntil) : <span className="warn-text">nunca importado</span> },
     {
-      id: 'flags', label: 'Avisos', width: 110, className: 'small',
+      id: 'flags', label: 'Avisos', sort: r => r.unreadMessages + r.openRequests, width: 110, className: 'small',
       render: r => <>
         {r.periodClosed && '🔒 '}
         {r.unreadMessages > 0 && <Link to={`/o/${r.organizationId}/messages`}>✉️ {r.unreadMessages}</Link>}

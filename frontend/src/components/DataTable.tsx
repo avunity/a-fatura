@@ -13,10 +13,12 @@ export type Col<T> = {
   defaultVisible?: boolean    // default true
   locked?: boolean            // cannot be hidden
   width?: number              // default width in px (otherwise shares the remaining space)
+  sort?: (row: T) => string | number | boolean | null | undefined  // makes the column sortable by clicking the header
 }
 
 type Pref = { id: string; visible: boolean }
-type Saved = { prefs: Pref[]; widths: Record<string, number> }
+export type SortState = { id: string; dir: 'asc' | 'desc' } | null
+type Saved = { prefs: Pref[]; widths: Record<string, number>; sort?: SortState }
 
 export type TableLayout<T> = {
   prefs: Pref[]
@@ -28,9 +30,13 @@ export type TableLayout<T> = {
   move: (fromId: string, toId: string) => void
   moveBy: (id: string, delta: -1 | 1) => void
   setWidth: (id: string, width: number) => void
+  sort: SortState
+  toggleSort: (id: string) => void
+  sortRows: (rows: T[]) => T[]
   reset: () => void
 }
 
+const collator = new Intl.Collator('pt-PT', { numeric: true, sensitivity: 'base' })
 const storageKey = (key: string) => `afatura.table.${key}.v1`
 
 function defaults<T>(columns: Col<T>[]): Saved {
@@ -44,7 +50,8 @@ function load<T>(key: string, columns: Col<T>[]): Saved {
     const known = saved.prefs.filter(p => columns.some(c => c.id === p.id))
     const missing = columns.filter(c => !known.some(p => p.id === c.id)).map(c => ({ id: c.id, visible: c.defaultVisible !== false }))
     const prefs = [...known, ...missing].map(p => (columns.find(c => c.id === p.id)?.locked ? { ...p, visible: true } : p))
-    return { prefs, widths: saved.widths ?? {} }
+    const sort = saved.sort && columns.some(c => c.id === saved.sort!.id && c.sort) ? saved.sort : null
+    return { prefs, widths: saved.widths ?? {}, sort }
   } catch { return defaults(columns) }
 }
 
@@ -79,6 +86,30 @@ export function useTableLayout<T>(key: string, columns: Col<T>[]): TableLayout<T
     },
     setWidth: (id, width) => update({ ...state, widths: { ...state.widths, [id]: Math.max(60, Math.round(width)) } }),
     reset: () => update(defaults(columns)),
+    sort: state.sort ?? null,
+    toggleSort: id => {
+      const cur = state.sort
+      // asc → desc → sem ordenação
+      const next: SortState = !cur || cur.id !== id ? { id, dir: 'asc' } : cur.dir === 'asc' ? { id, dir: 'desc' } : null
+      update({ ...state, sort: next })
+    },
+    sortRows: rows => {
+      const s = state.sort
+      const col = s && columns.find(c => c.id === s.id)
+      if (!s || !col?.sort) return rows
+      const get = col.sort
+      const mul = s.dir === 'asc' ? 1 : -1
+      return rows
+        .map((row, i) => ({ row, i, v: get(row) }))
+        .sort((a, b) => {
+          const an = a.v == null || a.v === '', bn = b.v == null || b.v === ''
+          if (an || bn) return an && bn ? a.i - b.i : an ? 1 : -1   // vazios sempre no fim
+          const av = typeof a.v === 'boolean' ? Number(a.v) : a.v!, bv = typeof b.v === 'boolean' ? Number(b.v) : b.v!
+          const c = typeof av === 'number' && typeof bv === 'number' ? av - bv : collator.compare(String(av), String(bv))
+          return c !== 0 ? c * mul : a.i - b.i
+        })
+        .map(x => x.row)
+    },
   }
 }
 
@@ -98,7 +129,7 @@ export function ColumnPicker<T>({ layout }: { layout: TableLayout<T> }) {
       {open && (
         <div className="popover col-popover">
           <div className="col-head"><b>Colunas</b><button className="link" onClick={layout.reset}>Repor</button></div>
-          <p className="small muted col-tip">Também pode arrastar os cabeçalhos para mudar a ordem e o limite direito para mudar a largura.</p>
+          <p className="small muted col-tip">Clique num cabeçalho para ordenar (▲ / ▼ / sem ordem). Arraste o cabeçalho para mudar a posição e o limite direito para mudar a largura.</p>
           {layout.prefs.map((p, idx) => {
             const def = layout.columns.find(c => c.id === p.id)
             if (!def) return null
@@ -136,7 +167,9 @@ export function DataTable<T>({
 }) {
   const [dragId, setDragId] = useState<string | null>(null)
   const [overId, setOverId] = useState<string | null>(null)
+  const resizedAt = useRef(0)  // evita que o fim de um redimensionamento conte como clique de ordenação
   const cols = layout.visibleColumns
+  const sorted = useMemo(() => layout.sortRows(rows), [rows, layout.sort?.id, layout.sort?.dir]) // eslint-disable-line react-hooks/exhaustive-deps
   const hasLeading = leadingCell !== undefined
   const colCount = cols.length + (hasLeading ? 1 : 0)
   const fixedWidth = cols.reduce((s, c) => s + (layout.widths[c.id] ?? c.width ?? 140), 0) + (hasLeading ? 36 : 0)
@@ -151,6 +184,7 @@ export function DataTable<T>({
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('mouseup', onUp)
       document.body.classList.remove('resizing')
+      resizedAt.current = Date.now()
       layout.setWidth(id, startW + ev.clientX - startX)
     }
     document.body.classList.add('resizing')
@@ -171,7 +205,7 @@ export function DataTable<T>({
             {cols.map(c => (
               <th
                 key={c.id}
-                className={`${c.className?.includes('num') ? 'num' : ''} ${dragId === c.id ? 'dragging' : ''} ${overId === c.id && dragId !== c.id ? 'drop-target' : ''}`}
+                className={`${c.className?.includes('num') ? 'num' : ''} ${c.sort ? 'sortable' : ''} ${layout.sort?.id === c.id ? 'sorted' : ''} ${dragId === c.id ? 'dragging' : ''} ${overId === c.id && dragId !== c.id ? 'drop-target' : ''}`}
                 style={layout.widths[c.id] ? { width: layout.widths[c.id] } : undefined}
                 draggable
                 onDragStart={e => { setDragId(c.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', c.id) }}
@@ -179,9 +213,12 @@ export function DataTable<T>({
                 onDragLeave={() => setOverId(o => (o === c.id ? null : o))}
                 onDrop={e => { e.preventDefault(); const from = dragId ?? e.dataTransfer.getData('text/plain'); if (from) layout.move(from, c.id); setDragId(null); setOverId(null) }}
                 onDragEnd={() => { setDragId(null); setOverId(null) }}
-                title="Arraste para mudar de posição"
+                onClick={c.sort ? () => { if (Date.now() - (resizedAt.current ?? 0) > 300) layout.toggleSort(c.id) } : undefined}
+                aria-sort={layout.sort?.id === c.id ? (layout.sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}
+                title={c.sort ? 'Clique para ordenar · arraste para mudar de posição' : 'Arraste para mudar de posição'}
               >
                 <span className="th-label">{c.label}</span>
+                {c.sort && <span className="sort-ind">{layout.sort?.id === c.id ? (layout.sort.dir === 'asc' ? '▲' : '▼') : '↕'}</span>}
                 <span className="col-resize" onMouseDown={e => startResize(e, c.id)} onClick={e => e.stopPropagation()} draggable={false}
                   onDragStart={e => { e.preventDefault(); e.stopPropagation() }} title="Arraste para mudar a largura" />
               </th>
@@ -190,7 +227,7 @@ export function DataTable<T>({
         </thead>
         <tbody>
           {prefixRows?.(colCount)}
-          {rows.map(r => (
+          {sorted.map(r => (
             <tr key={rowKey(r)} className={rowClassName?.(r) ?? ''}>
               {hasLeading && <td className="sel">{leadingCell!(r)}</td>}
               {cols.map(c => <td key={c.id} className={c.className}>{c.render(r, { visible: layout.visibleSet })}</td>)}

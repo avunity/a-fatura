@@ -25,20 +25,20 @@ export default function Backoffice() {
   const [info, setInfo] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const orgColumns: Col<Org>[] = [
-    { id: 'name', label: 'Entidade', width: 240, locked: true, render: o => <><Link to={`/o/${o.id}`}>{o.name}</Link><div className="muted small">{o.nif}</div></> },
-    { id: 'type', label: 'Tipo', width: 110, render: o => o.type },
-    { id: 'members', label: 'Membros', width: 90, className: 'num', render: o => o.members },
-    { id: 'invoices', label: 'Docs', width: 80, className: 'num', render: o => o.invoices },
-    { id: 'last', label: 'Último envio', width: 150, className: 'small', render: o => dateTime(o.lastUpload) },
-    { id: 'created', label: 'Criada', width: 110, className: 'small', defaultVisible: false, render: o => date(o.createdAt) },
-    { id: 'accountants', label: 'Contabilista', width: 220, className: 'small', render: o => <>{o.accountants.map(a => a.name).join(', ') || '—'} <button className="link" onClick={() => setAssign(o)}>associar</button></> },
+    { id: 'name', label: 'Entidade', sort: o => o.name, width: 240, locked: true, render: o => <><Link to={`/o/${o.id}`}>{o.name}</Link><div className="muted small">{o.nif}</div></> },
+    { id: 'type', label: 'Tipo', sort: o => o.type, width: 110, render: o => o.type },
+    { id: 'members', label: 'Membros', sort: o => o.members, width: 90, className: 'num', render: o => o.members },
+    { id: 'invoices', label: 'Docs', sort: o => o.invoices, width: 80, className: 'num', render: o => o.invoices },
+    { id: 'last', label: 'Último envio', sort: o => o.lastUpload, width: 150, className: 'small', render: o => dateTime(o.lastUpload) },
+    { id: 'created', label: 'Criada', sort: o => o.createdAt, width: 110, className: 'small', defaultVisible: false, render: o => date(o.createdAt) },
+    { id: 'accountants', label: 'Contabilista', sort: o => o.accountants.map(a => a.name).join(', '), width: 220, className: 'small', render: o => <>{o.accountants.map(a => a.name).join(', ') || '—'} <button className="link" onClick={() => setAssign(o)}>associar</button></> },
     { id: 'actions', label: '', width: 100, render: o => <button className="link" onClick={async () => { await api.put(`/api/backoffice/organizations/${o.id}`, { isActive: !o.isActive }); reloadOrgs() }}>{o.isActive ? 'Suspender' : 'Reativar'}</button> },
   ]
   const userColumns: Col<User>[] = [
-    { id: 'name', label: 'Nome', width: 220, locked: true, render: u => <>{u.name}<div className="muted small">{u.email}</div></> },
-    { id: 'role', label: 'Perfil', width: 170, render: u => <>{u.role}{u.role === 'Accountant' && <span className="muted small"> · {u.clients} clientes</span>}</> },
-    { id: 'orgs', label: 'Entidades', width: 280, className: 'small', render: u => u.organizations.map(o => `${o.name} (${o.role})`).join(', ') },
-    { id: 'login', label: 'Último login', width: 150, className: 'small', render: u => dateTime(u.lastLoginAt) },
+    { id: 'name', label: 'Nome', sort: u => u.name, width: 220, locked: true, render: u => <>{u.name}<div className="muted small">{u.email}</div></> },
+    { id: 'role', label: 'Perfil', sort: u => u.role, width: 170, render: u => <>{u.role}{u.role === 'Accountant' && <span className="muted small"> · {u.clients} clientes</span>}</> },
+    { id: 'orgs', label: 'Entidades', sort: u => u.organizations.length, width: 280, className: 'small', render: u => u.organizations.map(o => `${o.name} (${o.role})`).join(', ') },
+    { id: 'login', label: 'Último login', sort: u => u.lastLoginAt, width: 150, className: 'small', render: u => dateTime(u.lastLoginAt) },
     {
       id: 'actions', label: '', width: 230, render: u => <>
         <button className="link" onClick={async () => { await api.put(`/api/backoffice/users/${u.id}`, { isActive: !u.isActive }); reloadUsers() }}>{u.isActive ? 'Bloquear' : 'Desbloquear'}</button>

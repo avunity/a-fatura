@@ -50,12 +50,12 @@ export default function Banks() {
   }
 
   const txColumns = useMemo<Col<Tx>[]>(() => [
-    { id: 'date', label: 'Data', width: 100, render: t => date(t.date) },
-    { id: 'description', label: 'Descrição', width: 360, locked: true, render: t => t.description },
-    { id: 'amount', label: 'Montante', width: 120, className: 'num', render: t => <span className={t.amount < 0 ? 'bad-text' : 'ok'}>{eur(t.amount)}</span> },
-    { id: 'balance', label: 'Saldo', width: 120, className: 'num muted', render: t => eur(t.balance) },
+    { id: 'date', label: 'Data', sort: t => t.date, width: 100, render: t => date(t.date) },
+    { id: 'description', label: 'Descrição', sort: t => t.description, width: 360, locked: true, render: t => t.description },
+    { id: 'amount', label: 'Montante', sort: t => t.amount, width: 120, className: 'num', render: t => <span className={t.amount < 0 ? 'bad-text' : 'ok'}>{eur(t.amount)}</span> },
+    { id: 'balance', label: 'Saldo', sort: t => t.balance, width: 120, className: 'num muted', render: t => eur(t.balance) },
     {
-      id: 'invoice', label: 'Fatura', width: 150,
+      id: 'invoice', label: 'Fatura', sort: t => (t.matchedInvoiceId ? 1 : 0), width: 150,
       render: t => t.matchedInvoiceId ? <><a href={`/o/${orgId}/invoices/${t.matchedInvoiceId}`}>ver</a> <button className="link" onClick={() => match(t.id, null)}>desligar</button></> : '',
     },
   ], [orgId, account?.id]) // eslint-disable-line react-hooks/exhaustive-deps

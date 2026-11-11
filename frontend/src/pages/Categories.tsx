@@ -16,10 +16,10 @@ export default function Categories() {
   const canEdit = (c?: Category) => (c?.isGlobal ? org?.access.isAdmin : org?.access.canManage || org?.access.isAccountant)
 
   const columns = useMemo<Col<Category>[]>(() => [
-    { id: 'name', label: 'Categoria', width: 260, locked: true, render: c => <><span className="dot" style={{ background: c.color }} /> {c.name} {c.isGlobal && <span className="muted small">(predefinida)</span>}</> },
-    { id: 'keywords', label: 'Palavras-chave', width: 380, className: 'small muted', render: c => c.keywords },
-    { id: 'vehicle', label: 'Viaturas', width: 90, render: c => (c.isVehicleRelated ? '🚗' : '') },
-    { id: 'vat', label: '% IVA dedutível (indicativo)', width: 200, render: c => (c.vatDeductiblePercent != null ? `${c.vatDeductiblePercent}%` : '—') },
+    { id: 'name', label: 'Categoria', sort: c => c.name, width: 260, locked: true, render: c => <><span className="dot" style={{ background: c.color }} /> {c.name} {c.isGlobal && <span className="muted small">(predefinida)</span>}</> },
+    { id: 'keywords', label: 'Palavras-chave', sort: c => c.keywords, width: 380, className: 'small muted', render: c => c.keywords },
+    { id: 'vehicle', label: 'Viaturas', sort: c => (c.isVehicleRelated ? 1 : 0), width: 90, render: c => (c.isVehicleRelated ? '🚗' : '') },
+    { id: 'vat', label: '% IVA dedutível (indicativo)', sort: c => c.vatDeductiblePercent, width: 200, render: c => (c.vatDeductiblePercent != null ? `${c.vatDeductiblePercent}%` : '—') },
     { id: 'actions', label: 'Ações', width: 90, className: 'row-actions', render: c => canEdit(c) && <button className="link" onClick={() => setEdit({ ...c, vatDeductiblePercent: c.vatDeductiblePercent?.toString() ?? '' })}>Editar</button> },
   ], [org]) // eslint-disable-line react-hooks/exhaustive-deps
   const layout = useTableLayout('categories', columns)
