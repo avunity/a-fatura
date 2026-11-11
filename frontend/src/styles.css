@@ -253,3 +253,7 @@ img.preview, iframe.preview { color-scheme: light; }
 .row-actions { white-space: nowrap; text-align: right; }
 .row-actions .link { font-size: 12px; }
 .link-list { display: flex; flex-direction: column; gap: 2px; max-height: 50vh; overflow: auto; border: 1px solid var(--line); border-radius: 10px; padding: 4px; }
+
+.save-row { display: flex; align-items: center; gap: 8px; padding-top: 4px; }
+.save-row .spacer { flex: 1; }
+.save-row.dirty { border-top: 1px dashed var(--warn-line); padding-top: 10px; }

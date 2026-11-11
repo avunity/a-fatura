@@ -37,8 +37,14 @@ export default function InvoiceDetail() {
   if (!inv) return <Page title="Fatura"><ErrorBox error={error} /></Page>
   const set = (k: keyof Invoice) => (e: { target: { value: string } }) => setForm({ ...form, [k]: e.target.value })
   const num = (v: unknown) => (v === '' || v == null ? null : Number(v))
+  const FISCAL: (keyof Invoice)[] = ['supplierNif', 'supplierName', 'buyerNif', 'documentType', 'documentNumber', 'atcud', 'issueDate', 'netAmount', 'vatAmount', 'totalAmount']
+  const norm = (v: unknown) => (v === '' || v == null ? '' : String(v))
+  const fiscalDirty = FISCAL.some(k => norm(form[k]) !== norm(inv[k]))
+  const resetFiscal = () => setForm({ ...form, ...Object.fromEntries(FISCAL.map(k => [k, inv[k]])) })
+  const totalsOff = num(form.netAmount) != null && num(form.vatAmount) != null && num(form.totalAmount) != null
+    && Math.abs((num(form.netAmount)! + num(form.vatAmount)!) - num(form.totalAmount)!) > 0.05
 
-  async function save() {
+  async function save(what: 'fiscal' | 'classification' = 'classification') {
     setErr(null); setMsg(null)
     try {
       await api.put(`/api/orgs/${orgId}/invoices/${id}`, {
@@ -49,7 +55,7 @@ export default function InvoiceDetail() {
         projectId: form.projectId || null, clearProject: !form.projectId,
         notes: form.notes, paidPersonally: form.paidPersonally,
       })
-      setMsg('Guardado. A categoria/viatura escolhida fica memorizada para este fornecedor.')
+      setMsg(what === 'fiscal' ? 'Dados fiscais guardados.' : 'Guardado. A categoria/viatura escolhida fica memorizada para este fornecedor.')
       reload()
     } catch (e) { setErr((e as Error).message) }
   }
@@ -86,6 +92,14 @@ export default function InvoiceDetail() {
               <label>Base<input type="number" step="0.01" value={form.netAmount ?? ''} onChange={set('netAmount')} /></label>
               <label>IVA<input type="number" step="0.01" value={form.vatAmount ?? ''} onChange={set('vatAmount')} /></label>
               <label>Total<input type="number" step="0.01" value={form.totalAmount ?? ''} onChange={set('totalAmount')} /></label>
+            </div>
+            <div className={`save-row ${fiscalDirty ? 'dirty' : ''}`}>
+              {fiscalDirty
+                ? <span className="small warn-text">Alterações por guardar{totalsOff ? ' · base + IVA não corresponde ao total' : ''}</span>
+                : <span className="small muted">Corrija os campos se a leitura automática falhou.</span>}
+              <span className="spacer" />
+              {fiscalDirty && <button onClick={resetFiscal}>Desfazer</button>}
+              <button className="primary" disabled={!fiscalDirty} onClick={() => save('fiscal')}>Guardar</button>
             </div>
             {inv.vatLines.length > 0 && (
               <table className="table small">
@@ -133,7 +147,7 @@ export default function InvoiceDetail() {
               {inv.licensePlateDetected && <> · matrícula lida: <b>{inv.licensePlateDetected}</b></>}
               {inv.fuelLiters && <> · {inv.fuelLiters} L</>}{inv.energyKwh && <> · {inv.energyKwh} kWh</>}
             </p>
-            <button className="primary" onClick={save}>Guardar</button>
+            <button className="primary" onClick={() => save('classification')}>Guardar</button>
             {org?.access.canManage && inv.paidPersonally && (
               <span className="row gap" style={{ marginTop: 8 }}>
                 {['Approved', 'Paid', 'Rejected'].map(s => <button key={s} onClick={() => action(() => api.post(`/api/orgs/${orgId}/invoices/${id}/reimbursement`, { status: s }))}>{({ Approved: 'Aprovar', Paid: 'Marcar pago', Rejected: 'Rejeitar' } as Record<string, string>)[s]}</button>)}

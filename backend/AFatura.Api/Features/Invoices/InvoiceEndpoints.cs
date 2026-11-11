@@ -116,10 +116,11 @@ public static class InvoiceEndpoints
         });
 
         g.MapPut("{id:guid}", async (Guid orgId, Guid id, InvoiceUpdate u, AccessService access, CurrentUser me,
-            ClassificationService classifier, AuditService audit, AppDbContext db, CancellationToken ct) =>
+            ClassificationService classifier, EFaturaMatcher matcher, AuditService audit, AppDbContext db, CancellationToken ct) =>
         {
             var a = await access.GetAsync(orgId, ct);
             var inv = await access.Invoices(a).FirstOrDefaultAsync(i => i.Id == id, ct) ?? throw new AppException(404, "Fatura não encontrada");
+            var fiscalBefore = (inv.SupplierNif, inv.DocumentNumber, inv.Atcud, inv.IssueDate, inv.TotalAmount);
             await access.EnsurePeriodOpenAsync(a, inv.IssueDate, ct);
             await access.EnsurePeriodOpenAsync(a, u.IssueDate, ct);
 
@@ -160,6 +161,20 @@ public static class InvoiceEndpoints
 
             if (categoryChanged || vehicleChanged)
                 await classifier.LearnAsync(orgId, inv.SupplierNif, categoryChanged ? inv.CategoryId : null, vehicleChanged ? inv.VehicleId : null, ct);
+
+            // Manual fiscal corrections: refresh the alerts they affect and try to match the e-Fatura line again.
+            if (fiscalBefore != (inv.SupplierNif, inv.DocumentNumber, inv.Atcud, inv.IssueDate, inv.TotalAmount)
+                || u.NetAmount != null || u.VatAmount != null)
+            {
+                if (inv is { NetAmount: { } net, VatAmount: { } vat, TotalAmount: { } total })
+                {
+                    if (Math.Abs(net + vat - total) > 0.05m) { if (!inv.Flags.Contains(InvoiceFlags.TotalsMismatch)) inv.Flags.Add(InvoiceFlags.TotalsMismatch); }
+                    else inv.Flags.Remove(InvoiceFlags.TotalsMismatch);
+                }
+                if (!string.IsNullOrWhiteSpace(inv.Atcud)) inv.Flags.Remove(InvoiceFlags.MissingAtcud);
+                if (inv.SupplierNif != null && Text.IsValidPtNif(inv.SupplierNif)) inv.Flags.Remove(InvoiceFlags.InvalidSupplierNif);
+                if (inv.EFaturaRecordId == null && inv.DuplicateOfId == null) await matcher.TryLinkAsync(inv, ct);
+            }
 
             audit.Log(orgId, me.Id, "invoice.update", nameof(Invoice), inv.Id);
             await db.SaveChangesAsync(ct);
