@@ -232,6 +232,7 @@ private fun MainScreen(api: Api, me: Me, themeMode: String, onTheme: (String) ->
     var recent by remember { mutableStateOf<List<InvoiceItem>>(emptyList()) }
     var refreshing by remember { mutableStateOf(false) }
     var orgSheet by remember { mutableStateOf(false) }
+    var openId by remember { mutableStateOf<String?>(null) }
     val queue = remember { mutableStateListOf<Pending>() }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -269,6 +270,12 @@ private fun MainScreen(api: Api, me: Me, themeMode: String, onTheme: (String) ->
 
     val capture = rememberDocumentCapture { file -> file?.let(::send) }
     val current = orgs.firstOrNull { it.first == orgId }
+
+    val detailOrg = orgId
+    if (openId != null && detailOrg != null) {
+        InvoiceDetailScreen(api, detailOrg, openId!!) { openId = null; scope.launch { refresh() } }
+        return
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
@@ -311,13 +318,13 @@ private fun MainScreen(api: Api, me: Me, themeMode: String, onTheme: (String) ->
                     projects = projects, projectId = projectId, onProject = { projectId = it },
                     paidPersonally = paidPersonally, onPaid = { paidPersonally = it },
                     recent = recent.take(3), onRetry = { p -> queue.removeAll { it.id == p.id }; send(p.file) },
-                    onSeeAll = { tab = Tab.Docs },
+                    onSeeAll = { tab = Tab.Docs }, onOpen = { openId = it },
                 )
                 Tab.Docs -> PullToRefreshBox(
                     isRefreshing = refreshing,
                     onRefresh = { scope.launch { refreshing = true; refresh(); refreshing = false } },
                     modifier = Modifier.fillMaxSize(),
-                ) { DocsTab(recent) }
+                ) { DocsTab(recent) { openId = it } }
                 Tab.Account -> AccountTab(api, me, themeMode, onTheme, onLogout)
             }
         }
@@ -353,7 +360,7 @@ private fun SendTab(
     vehicles: List<Vehicle>, vehicleId: String?, onVehicle: (String?) -> Unit,
     projects: List<Project>, projectId: String?, onProject: (String?) -> Unit,
     paidPersonally: Boolean, onPaid: (Boolean) -> Unit,
-    recent: List<InvoiceItem>, onRetry: (Pending) -> Unit, onSeeAll: () -> Unit,
+    recent: List<InvoiceItem>, onRetry: (Pending) -> Unit, onSeeAll: () -> Unit, onOpen: (String) -> Unit,
 ) {
     val clipboard = LocalClipboardManager.current
     val mailbox = me.memberships.firstOrNull { it.organizationId == orgId }?.mailbox
@@ -432,7 +439,7 @@ private fun SendTab(
                     TextButton(onClick = onSeeAll) { Text("Ver todos") }
                 }
             }
-            items(recent, key = { "r" + it.id }) { InvoiceRow(it) }
+            items(recent, key = { "r" + it.id }) { InvoiceRow(it, onOpen) }
         }
 
         mailbox?.let { addr ->
@@ -454,7 +461,7 @@ private fun SendTab(
 }
 
 @Composable
-private fun SectionCard(content: @Composable () -> Unit) {
+internal fun SectionCard(content: @Composable () -> Unit) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), shape = MaterialTheme.shapes.medium,
         border = BorderStroke(1.dp, C.line), modifier = Modifier.fillMaxWidth(),
@@ -485,10 +492,10 @@ private fun PickerRow(icon: ImageVector, label: String, value: String, options: 
 
 // ───────────────────────── Documentos ─────────────────────────
 
-private data class StatusStyle(val label: String, val fg: Color, val bg: Color, val icon: ImageVector)
+internal data class StatusStyle(val label: String, val fg: Color, val bg: Color, val icon: ImageVector)
 
 @Composable
-private fun statusStyle(s: String, flagged: Boolean): StatusStyle = when (s) {
+internal fun statusStyle(s: String, flagged: Boolean): StatusStyle = when (s) {
     "Processed" -> StatusStyle("Processada", C.ok, C.okSoft, Icons.Outlined.CheckCircle)
     "NeedsReview" -> StatusStyle("Rever", C.warn, C.warnSoft, Icons.Outlined.Warning)
     "Failed" -> StatusStyle("Erro", C.bad, C.badSoft, Icons.Outlined.ErrorOutline)
@@ -497,7 +504,7 @@ private fun statusStyle(s: String, flagged: Boolean): StatusStyle = when (s) {
 }
 
 @Composable
-private fun DocsTab(recent: List<InvoiceItem>) {
+private fun DocsTab(recent: List<InvoiceItem>, onOpen: (String) -> Unit) {
     var filter by remember { mutableStateOf("all") }
     val shown = when (filter) {
         "review" -> recent.filter { it.status == "NeedsReview" || it.status == "Failed" }
@@ -519,16 +526,16 @@ private fun DocsTab(recent: List<InvoiceItem>) {
                 Text("Sem documentos", color = C.muted)
             }
         }
-        items(shown, key = { it.id }) { InvoiceRow(it) }
+        items(shown, key = { it.id }) { InvoiceRow(it, onOpen) }
         item { Text("Puxe para baixo para atualizar", style = MaterialTheme.typography.bodySmall, color = C.muted, modifier = Modifier.fillMaxWidth().padding(8.dp)) }
     }
 }
 
 @Composable
-private fun InvoiceRow(inv: InvoiceItem) {
+private fun InvoiceRow(inv: InvoiceItem, onOpen: (String) -> Unit) {
     val st = statusStyle(inv.status, inv.flags.isNotEmpty())
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), shape = MaterialTheme.shapes.medium,
-        border = BorderStroke(1.dp, C.line), modifier = Modifier.fillMaxWidth()) {
+        border = BorderStroke(1.dp, C.line), modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable { onOpen(inv.id) }) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(st.bg), contentAlignment = Alignment.Center) {
                 Icon(st.icon, null, tint = st.fg, modifier = Modifier.size(22.dp))

@@ -33,6 +33,26 @@ import kotlinx.serialization.json.Json
     val issueDate: String? = null, val totalAmount: Double? = null, val categoryName: String? = null,
     val vehiclePlate: String? = null, val collectedInEFatura: Boolean = false, val flags: List<String> = emptyList(),
 )
+@Serializable data class VatLineDto(val region: String? = null, val rate: Double = 0.0, val base: Double = 0.0, val vat: Double = 0.0)
+@Serializable data class SubDocumentDto(
+    val supplierNif: String = "", val documentType: String? = null, val documentNumber: String? = null, val atcud: String? = null,
+    val issueDate: String? = null, val total: Double? = null, val vat: Double? = null,
+)
+@Serializable data class InvoiceDetail(
+    val id: String, val status: String, val source: String = "", val extractionMethod: String = "",
+    val supplierNif: String? = null, val supplierName: String? = null, val buyerNif: String? = null,
+    val documentType: String? = null, val documentNumber: String? = null, val atcud: String? = null,
+    val issueDate: String? = null, val netAmount: Double? = null, val vatAmount: Double? = null, val totalAmount: Double? = null,
+    val currency: String = "EUR", val vatLines: List<VatLineDto> = emptyList(), val subDocuments: List<SubDocumentDto> = emptyList(),
+    val summary: String? = null, val licensePlateDetected: String? = null, val fuelLiters: Double? = null, val energyKwh: Double? = null,
+    val categoryName: String? = null, val vehiclePlate: String? = null, val projectName: String? = null,
+    val classificationReason: String? = null,
+    val collectedInEFatura: Boolean = false, val duplicateOfId: String? = null, val hasValidQr: Boolean = false,
+    val flags: List<String> = emptyList(), val processingError: String? = null,
+    val paidPersonally: Boolean = false, val reimbursement: String = "", val notes: String? = null, val tags: List<String> = emptyList(),
+    val uploadedByName: String = "", val fileName: String? = null, val fileContentType: String? = null,
+    val createdAt: String? = null, val processedAt: String? = null, val reviewedAt: String? = null,
+)
 @Serializable data class InvoicePage(val total: Int, val items: List<InvoiceItem>)
 @Serializable data class ApiErrorBody(val status: Int = 0, val title: String = "")
 
@@ -84,6 +104,16 @@ class Api(private val settings: Settings = Settings()) {
 
     suspend fun recentInvoices(org: String): List<InvoiceItem> =
         http.get("$baseUrl/api/orgs/$org/invoices?pageSize=30") { auth() }.ensureOk().body<InvoicePage>().items
+
+    suspend fun invoice(org: String, id: String): InvoiceDetail =
+        http.get("$baseUrl/api/orgs/$org/invoices/$id") { auth() }.ensureOk().body()
+
+    /** The original document (photo or PDF) as uploaded. */
+    suspend fun invoiceFile(org: String, inv: InvoiceDetail): CapturedFile {
+        val bytes = http.get("$baseUrl/api/orgs/$org/invoices/${inv.id}/file") { auth() }.ensureOk().body<ByteArray>()
+        val mime = inv.fileContentType ?: if (inv.fileName?.lowercase()?.endsWith(".pdf") == true) "application/pdf" else "image/jpeg"
+        return CapturedFile(bytes, inv.fileName ?: "documento", mime)
+    }
 
     suspend fun upload(org: String, file: CapturedFile, vehicleId: String?, paidPersonally: Boolean, notes: String?, projectId: String? = null) {
         http.submitFormWithBinaryData(
