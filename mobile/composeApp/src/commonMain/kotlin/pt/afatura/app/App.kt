@@ -27,6 +27,10 @@ import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.PictureAsPdf
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.DirectionsCar
 import androidx.compose.material.icons.outlined.DocumentScanner
 import androidx.compose.material.icons.outlined.ErrorOutline
@@ -213,7 +217,9 @@ private enum class Tab(val label: String, val icon: ImageVector) {
     Account("Conta", Icons.Outlined.AccountCircle),
 }
 
-private data class Pending(val id: Long, val file: CapturedFile, val failed: String? = null)
+private data class Pending(val id: Long, val files: List<CapturedFile>, val failed: String? = null) {
+    val label get() = if (files.size == 1) files[0].fileName else "Fatura com ${files.size} partes"
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -251,16 +257,21 @@ private fun MainScreen(api: Api, me: Me, themeMode: String, onTheme: (String) ->
         while (true) { refresh(); delay(8000) } // statuses change while the server processes documents
     }
 
-    fun send(file: CapturedFile) {
+    // "Fatura com várias páginas": as capturas acumulam-se aqui e seguem juntas como um único documento
+    var multiPage by remember { mutableStateOf(false) }
+    val draft = remember { mutableStateListOf<CapturedFile>() }
+
+    fun send(files: List<CapturedFile>) {
         val org = orgId ?: return
-        val item = Pending(kotlin.random.Random.nextLong(), file)
+        if (files.isEmpty()) return
+        val item = Pending(kotlin.random.Random.nextLong(), files)
         queue.add(0, item)
         scope.launch {
             try {
-                api.upload(org, file, vehicleId, paidPersonally, null, projectId)
+                api.upload(org, files, vehicleId, paidPersonally, null, projectId)
                 queue.removeAll { it.id == item.id }
                 refresh()
-                snackbar.showSnackbar("Enviado — a processar ${file.fileName}")
+                snackbar.showSnackbar("Enviado — a processar ${item.label}")
             } catch (e: Exception) {
                 val idx = queue.indexOfFirst { it.id == item.id }
                 if (idx >= 0) queue[idx] = item.copy(failed = e.message ?: "erro")
@@ -268,7 +279,9 @@ private fun MainScreen(api: Api, me: Me, themeMode: String, onTheme: (String) ->
         }
     }
 
-    val capture = rememberDocumentCapture { file -> file?.let(::send) }
+    val capture = rememberDocumentCapture { file ->
+        if (file != null) { if (multiPage) draft.add(file) else send(listOf(file)) }
+    }
     val current = orgs.firstOrNull { it.first == orgId }
 
     val detailOrg = orgId
@@ -317,7 +330,9 @@ private fun MainScreen(api: Api, me: Me, themeMode: String, onTheme: (String) ->
                     vehicles = vehicles, vehicleId = vehicleId, onVehicle = { vehicleId = it },
                     projects = projects, projectId = projectId, onProject = { projectId = it },
                     paidPersonally = paidPersonally, onPaid = { paidPersonally = it },
-                    recent = recent.take(3), onRetry = { p -> queue.removeAll { it.id == p.id }; send(p.file) },
+                    recent = recent.take(3), onRetry = { p -> queue.removeAll { it.id == p.id }; send(p.files) },
+                    multiPage = multiPage, onMultiPage = { multiPage = it }, draft = draft,
+                    onSendDraft = { send(draft.toList()); draft.clear(); multiPage = false },
                     onSeeAll = { tab = Tab.Docs }, onOpen = { openId = it },
                 )
                 Tab.Docs -> PullToRefreshBox(
@@ -361,6 +376,7 @@ private fun SendTab(
     projects: List<Project>, projectId: String?, onProject: (String?) -> Unit,
     paidPersonally: Boolean, onPaid: (Boolean) -> Unit,
     recent: List<InvoiceItem>, onRetry: (Pending) -> Unit, onSeeAll: () -> Unit, onOpen: (String) -> Unit,
+    multiPage: Boolean, onMultiPage: (Boolean) -> Unit, draft: MutableList<CapturedFile>, onSendDraft: () -> Unit,
 ) {
     val clipboard = LocalClipboardManager.current
     val mailbox = me.memberships.firstOrNull { it.organizationId == orgId }?.mailbox
@@ -377,8 +393,12 @@ private fun SendTab(
                         Icon(Icons.Outlined.DocumentScanner, null, tint = Color.White, modifier = Modifier.size(30.dp))
                     }
                     Column {
-                        Text("Digitalizar fatura", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp)
-                        Text("Deteta a fatura, corta o fundo e melhora a imagem", color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp)
+                        Text(if (multiPage) "Adicionar páginas" else "Digitalizar fatura", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                        Text(
+                            if (multiPage) "Digitalize a parte seguinte — ficam todas no mesmo documento"
+                            else "Deteta a fatura, corta o fundo e melhora a imagem. Pode digitalizar várias páginas seguidas.",
+                            color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp,
+                        )
                     }
                 }
             }
@@ -391,12 +411,22 @@ private fun SendTab(
             ) {
                 Icon(Icons.Outlined.UploadFile, null)
                 Spacer(Modifier.width(8.dp))
-                Text("Escolher PDF ou imagem")
+                Text(if (multiPage) "Adicionar PDF ou imagem" else "Escolher PDF ou imagem")
             }
         }
 
+        if (draft.isNotEmpty()) item { DraftCard(draft, onSendDraft) }
+
         item {
             SectionCard {
+                Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Fatura com várias páginas", fontWeight = FontWeight.Medium)
+                        Text("Junte várias fotos ou ficheiros num só documento", style = MaterialTheme.typography.bodySmall, color = C.muted)
+                    }
+                    Switch(multiPage || draft.isNotEmpty(), onMultiPage, enabled = draft.isEmpty())
+                }
+                HorizontalDivider(color = C.line)
                 if (projects.isNotEmpty())
                     PickerRow(Icons.Outlined.Folder, "Projeto", projects.firstOrNull { it.id == projectId }?.name ?: "Sem projeto",
                         listOf(null to "Sem projeto") + projects.map { it.id to it.name }, onProject)
@@ -423,7 +453,7 @@ private fun SendTab(
                         Icon(if (p.failed != null) Icons.Outlined.ErrorOutline else Icons.Outlined.UploadFile, null,
                             tint = if (p.failed != null) C.bad else C.info)
                         Spacer(Modifier.width(10.dp))
-                        Text(p.file.fileName, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium)
+                        Text(p.label, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium)
                         if (p.failed != null) Icon(Icons.Outlined.Refresh, "Repetir", tint = C.muted)
                     }
                     if (p.failed == null) LinearProgressIndicator(Modifier.fillMaxWidth().clip(CircleShape))
@@ -455,6 +485,35 @@ private fun SendTab(
                         IconButton(onClick = { clipboard.setText(AnnotatedString(addr)) }) { Icon(Icons.Outlined.ContentCopy, "Copiar") }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DraftCard(draft: MutableList<CapturedFile>, onSend: () -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), shape = MaterialTheme.shapes.medium,
+        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary), modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Fatura em preparação · ${draft.size} ${if (draft.size == 1) "parte" else "partes"}", fontWeight = FontWeight.Bold)
+            Text("Vão ser juntas num único PDF, por esta ordem.", style = MaterialTheme.typography.bodySmall, color = C.muted)
+            draft.forEachIndexed { i, f ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(if (f.mimeType == "application/pdf") Icons.Outlined.PictureAsPdf else Icons.Outlined.Image, null, tint = C.muted, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("${i + 1}. ${if (f.mimeType == "application/pdf") "PDF" else "Foto"}", fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                        Text("${f.fileName} · ${(f.bytes.size / 1024).coerceAtLeast(1)} KB", style = MaterialTheme.typography.bodySmall, color = C.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    if (i > 0) IconButton(onClick = { val x = draft.removeAt(i); draft.add(i - 1, x) }) { Icon(Icons.Outlined.KeyboardArrowUp, "Subir", tint = C.muted) }
+                    IconButton(onClick = { draft.removeAt(i) }) { Icon(Icons.Outlined.Delete, "Remover", tint = C.bad) }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 4.dp)) {
+                OutlinedButton(onClick = { draft.clear() }, border = BorderStroke(1.dp, C.line)) { Text("Descartar") }
+                Button(onClick = onSend, modifier = Modifier.weight(1f)) { Text("Enviar como uma fatura") }
             }
         }
     }

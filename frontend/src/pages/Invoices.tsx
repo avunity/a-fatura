@@ -37,6 +37,7 @@ export default function Invoices() {
   const [notice, setNotice] = useState<string | null>(null)
   const [paidPersonally, setPaidPersonally] = useState(false)
   const [uploading, setUploading] = useState<string | null>(null)
+  const [mergeFiles, setMergeFiles] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
 
   // ── Columns (order, visibility and width saved in the browser) ──
@@ -88,13 +89,18 @@ export default function Invoices() {
   async function upload(files: File[]) {
     if (files.length === 0) return
     setUploadError(null); setNotice(null)
-    const batch = files.map((f, i) => ({ key: `${Date.now()}-${i}`, name: f.name }))
+    const merge = mergeFiles && files.length > 1
+    if (merge) files = [...files].sort((x, y) => x.name.localeCompare(y.name, 'pt-PT', { numeric: true }))
+    const batch = merge
+      ? [{ key: `${Date.now()}-m`, name: `Fatura com ${files.length} partes (${files.map(f => f.name).join(', ')})` }]
+      : files.map((f, i) => ({ key: `${Date.now()}-${i}`, name: f.name }))
     setSending(cur => [...batch, ...cur])
     const form = new FormData()
     files.forEach(f => form.append('files', f))
     if (uploadVehicle) form.append('vehicleId', uploadVehicle)
     if (uploadProject) form.append('projectId', uploadProject)
     if (paidPersonally) form.append('paidPersonally', 'true')
+    if (merge) form.append('merge', 'true')
     setUploading(`A enviar ${files.length} ficheiro(s)…`)
     try {
       await api.upload(`/api/orgs/${orgId}/invoices`, form)
@@ -102,7 +108,7 @@ export default function Invoices() {
       setSending(cur => cur.filter(x => !batch.some(b => b.key === x.key)))
       const now = new Date()
       if (year !== now.getFullYear() || (month !== undefined && month !== now.getMonth() + 1))
-        setNotice(`${files.length} documento(s) enviados. Enquanto são processados aparecem em ${now.toLocaleDateString('pt-PT', { month: 'long', year: 'numeric' })}; depois ficam no mês da data da fatura.`)
+        setNotice(`${batch.length} documento(s) enviados. Enquanto são processados aparecem em ${now.toLocaleDateString('pt-PT', { month: 'long', year: 'numeric' })}; depois ficam no mês da data da fatura.`)
     } catch (e) {
       const msg = (e as Error).message
       setUploadError(msg)
@@ -136,6 +142,7 @@ export default function Invoices() {
               </select>
             </label>
           )}
+          <label className="inline" title="Para faturas longas fotografadas em várias partes: os ficheiros selecionados juntos são unidos num único PDF, pela ordem do nome"><input type="checkbox" checked={mergeFiles} onChange={e => setMergeFiles(e.target.checked)} /> Vários ficheiros = uma só fatura</label>
           <label className="inline"><input type="checkbox" checked={paidPersonally} onChange={e => setPaidPersonally(e.target.checked)} /> Paguei do meu bolso (pedir reembolso)</label>
           {uploading && <span className="muted">{uploading}</span>}
         </div>

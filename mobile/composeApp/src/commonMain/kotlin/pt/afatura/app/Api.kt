@@ -115,19 +115,26 @@ class Api(private val settings: Settings = Settings()) {
         return CapturedFile(bytes, inv.fileName ?: "documento", mime)
     }
 
-    suspend fun upload(org: String, file: CapturedFile, vehicleId: String?, paidPersonally: Boolean, notes: String?, projectId: String? = null) {
+    suspend fun upload(org: String, file: CapturedFile, vehicleId: String?, paidPersonally: Boolean, notes: String?, projectId: String? = null) =
+        upload(org, listOf(file), vehicleId, paidPersonally, notes, projectId)
+
+    /** Several files are sent as the pages of ONE invoice: the server joins them into a single PDF, in this order. */
+    suspend fun upload(org: String, files: List<CapturedFile>, vehicleId: String?, paidPersonally: Boolean, notes: String?, projectId: String? = null) {
         http.submitFormWithBinaryData(
             url = "$baseUrl/api/orgs/$org/invoices",
             formData = formData {
                 append("source", "Mobile")
+                if (files.size > 1) append("merge", "true")
                 vehicleId?.let { append("vehicleId", it) }
                 projectId?.let { append("projectId", it) }
                 if (paidPersonally) append("paidPersonally", "true")
                 notes?.takeIf { it.isNotBlank() }?.let { append("notes", it) }
-                append("files", file.bytes, Headers.build {
-                    append(HttpHeaders.ContentType, file.mimeType)
-                    append(HttpHeaders.ContentDisposition, "filename=\"${file.fileName}\"")
-                })
+                files.forEach { file ->
+                    append("files", file.bytes, Headers.build {
+                        append(HttpHeaders.ContentType, file.mimeType)
+                        append(HttpHeaders.ContentDisposition, "filename=\"${file.fileName}\"")
+                    })
+                }
             }
         ) { auth() }.ensureOk()
     }

@@ -48,7 +48,7 @@ actual fun rememberDocumentCapture(onResult: (CapturedFile?) -> Unit): DocumentC
             GmsDocumentScannerOptions.Builder()
                 .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL) // crop + filters + clean-up
                 .setGalleryImportAllowed(true)
-                .setPageLimit(10)
+                .setPageLimit(40)
                 .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG, GmsDocumentScannerOptions.RESULT_FORMAT_PDF)
                 .build()
         )

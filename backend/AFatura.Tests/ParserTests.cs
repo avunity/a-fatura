@@ -3,6 +3,8 @@ using AFatura.Api.Common;
 using AFatura.Api.Features.Banking;
 using AFatura.Api.Features.EFatura;
 using AFatura.Api.Features.Extraction;
+using AFatura.Api.Features.Invoices;
+using SkiaSharp;
 using Xunit;
 
 namespace AFatura.Tests;
@@ -124,5 +126,28 @@ public class EFaturaMatcherTests
         Assert.Equal(2, parts.Count);
         var matched = parts.Select(p => AFatura.Api.Features.EFatura.EFaturaMatcher.Best(p, records)?.DocumentNumber).ToList();
         Assert.Equal(new[] { "FT VV/1001", "FT VV/1002" }, matched);
+    }
+
+    private static byte[] Jpeg(int w, int h)
+    {
+        using var bmp = new SKBitmap(w, h);
+        using (var c = new SKCanvas(bmp)) c.Clear(SKColors.White);
+        using var img = SKImage.FromBitmap(bmp);
+        using var data = img.Encode(SKEncodedImageFormat.Jpeg, 80);
+        return data.ToArray();
+    }
+
+    [Fact]
+    public void Merges_photos_and_pdfs_into_one_pdf_in_order()
+    {
+        var twoPages = DocumentMerger.Merge([new("a.jpg", "image/jpeg", Jpeg(800, 1200)), new("b.jpg", "image/jpeg", Jpeg(800, 3000))]);
+        using (var doc = UglyToad.PdfPig.PdfDocument.Open(twoPages))
+        {
+            Assert.Equal(2, doc.NumberOfPages);
+            Assert.True(doc.GetPage(2).Height > doc.GetPage(1).Height); // talão comprido → página comprida
+        }
+        var all = DocumentMerger.Merge([new("x.pdf", "application/pdf", twoPages), new("c.jpg", "image/jpeg", Jpeg(5000, 400))]);
+        using var merged = UglyToad.PdfPig.PdfDocument.Open(all);
+        Assert.Equal(3, merged.NumberOfPages);
     }
 }

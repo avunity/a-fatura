@@ -88,6 +88,28 @@ public static class InvoiceEndpoints
             var paidPersonally = bool.TryParse(form["paidPersonally"], out var pp) && pp;
 
             var created = new List<object>();
+            // "merge": várias fotos/PDFs são páginas da mesma fatura → um único PDF, uma única fatura
+            if (bool.TryParse(form["merge"], out var merge) && merge && form.Files.Count > 1)
+            {
+                if (form.Files.Count > 60) throw new AppException(400, "No máximo 60 páginas por fatura");
+                var parts = new List<DocumentMerger.Part>();
+                foreach (var f in form.Files)
+                {
+                    using var ms = new MemoryStream();
+                    await f.CopyToAsync(ms, ct);
+                    parts.Add(new(f.FileName, f.ContentType, ms.ToArray()));
+                }
+                byte[] pdf;
+                try { pdf = DocumentMerger.Merge(parts); }
+                catch (AppException) { throw; }
+                catch (Exception e) { throw new AppException(400, $"Não foi possível juntar as páginas: {e.Message}"); }
+                var name = $"fatura-{DateTime.UtcNow:yyyyMMdd-HHmmss}-{parts.Count}p.pdf";
+                var merged = await intake.CreateAsync(orgId, me.Id, source, name, "application/pdf", pdf,
+                    form["notes"], vehicleId, categoryId, paidPersonally, projectId, ct);
+                created.Add(new { merged.Id, FileName = name, Status = merged.Status.ToString(), merged.CreatedAt });
+                return Results.Ok(created);
+            }
+
             foreach (var f in form.Files)
             {
                 using var ms = new MemoryStream();
