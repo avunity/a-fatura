@@ -257,8 +257,7 @@ private fun MainScreen(api: Api, me: Me, themeMode: String, onTheme: (String) ->
         while (true) { refresh(); delay(8000) } // statuses change while the server processes documents
     }
 
-    // "Fatura com várias páginas": as capturas acumulam-se aqui e seguem juntas como um único documento
-    var multiPage by remember { mutableStateOf(false) }
+    // Cada captura fica aqui até "Enviar": permite acrescentar mais páginas à mesma fatura antes de enviar
     val draft = remember { mutableStateListOf<CapturedFile>() }
 
     fun send(files: List<CapturedFile>) {
@@ -280,7 +279,7 @@ private fun MainScreen(api: Api, me: Me, themeMode: String, onTheme: (String) ->
     }
 
     val capture = rememberDocumentCapture { file ->
-        if (file != null) { if (multiPage) draft.add(file) else send(listOf(file)) }
+        if (file != null) draft.add(file)
     }
     val current = orgs.firstOrNull { it.first == orgId }
 
@@ -331,8 +330,7 @@ private fun MainScreen(api: Api, me: Me, themeMode: String, onTheme: (String) ->
                     projects = projects, projectId = projectId, onProject = { projectId = it },
                     paidPersonally = paidPersonally, onPaid = { paidPersonally = it },
                     recent = recent.take(3), onRetry = { p -> queue.removeAll { it.id == p.id }; send(p.files) },
-                    multiPage = multiPage, onMultiPage = { multiPage = it }, draft = draft,
-                    onSendDraft = { send(draft.toList()); draft.clear(); multiPage = false },
+                    draft = draft, onSendDraft = { send(draft.toList()); draft.clear() },
                     onSeeAll = { tab = Tab.Docs }, onOpen = { openId = it },
                 )
                 Tab.Docs -> PullToRefreshBox(
@@ -376,7 +374,7 @@ private fun SendTab(
     projects: List<Project>, projectId: String?, onProject: (String?) -> Unit,
     paidPersonally: Boolean, onPaid: (Boolean) -> Unit,
     recent: List<InvoiceItem>, onRetry: (Pending) -> Unit, onSeeAll: () -> Unit, onOpen: (String) -> Unit,
-    multiPage: Boolean, onMultiPage: (Boolean) -> Unit, draft: MutableList<CapturedFile>, onSendDraft: () -> Unit,
+    draft: MutableList<CapturedFile>, onSendDraft: () -> Unit,
 ) {
     val clipboard = LocalClipboardManager.current
     val mailbox = me.memberships.firstOrNull { it.organizationId == orgId }?.mailbox
@@ -393,9 +391,9 @@ private fun SendTab(
                         Icon(Icons.Outlined.DocumentScanner, null, tint = Color.White, modifier = Modifier.size(30.dp))
                     }
                     Column {
-                        Text(if (multiPage) "Adicionar páginas" else "Digitalizar fatura", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                        Text(if (draft.isNotEmpty()) "Adicionar página" else "Digitalizar fatura", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp)
                         Text(
-                            if (multiPage) "Digitalize a parte seguinte — ficam todas no mesmo documento"
+                            if (draft.isNotEmpty()) "Digitalize a parte seguinte da mesma fatura"
                             else "Deteta a fatura, corta o fundo e melhora a imagem. Pode digitalizar várias páginas seguidas.",
                             color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp,
                         )
@@ -411,22 +409,14 @@ private fun SendTab(
             ) {
                 Icon(Icons.Outlined.UploadFile, null)
                 Spacer(Modifier.width(8.dp))
-                Text(if (multiPage) "Adicionar PDF ou imagem" else "Escolher PDF ou imagem")
+                Text(if (draft.isNotEmpty()) "Adicionar PDF ou imagem" else "Escolher PDF ou imagem")
             }
         }
 
-        if (draft.isNotEmpty()) item { DraftCard(draft, onSendDraft) }
+        if (draft.isNotEmpty()) item { DraftCard(draft, onSendDraft, onAddPage = { capture.takePhoto() }) }
 
         item {
             SectionCard {
-                Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Fatura com várias páginas", fontWeight = FontWeight.Medium)
-                        Text("Junte várias fotos ou ficheiros num só documento", style = MaterialTheme.typography.bodySmall, color = C.muted)
-                    }
-                    Switch(multiPage || draft.isNotEmpty(), onMultiPage, enabled = draft.isEmpty())
-                }
-                HorizontalDivider(color = C.line)
                 if (projects.isNotEmpty())
                     PickerRow(Icons.Outlined.Folder, "Projeto", projects.firstOrNull { it.id == projectId }?.name ?: "Sem projeto",
                         listOf(null to "Sem projeto") + projects.map { it.id to it.name }, onProject)
@@ -491,14 +481,18 @@ private fun SendTab(
 }
 
 @Composable
-private fun DraftCard(draft: MutableList<CapturedFile>, onSend: () -> Unit) {
+private fun DraftCard(draft: MutableList<CapturedFile>, onSend: () -> Unit, onAddPage: () -> Unit) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), shape = MaterialTheme.shapes.medium,
         border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary), modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Fatura em preparação · ${draft.size} ${if (draft.size == 1) "parte" else "partes"}", fontWeight = FontWeight.Bold)
-            Text("Vão ser juntas num único PDF, por esta ordem.", style = MaterialTheme.typography.bodySmall, color = C.muted)
+            Text(if (draft.size == 1) "Pronta a enviar" else "Pronta a enviar · ${draft.size} partes", fontWeight = FontWeight.Bold)
+            Text(
+                if (draft.size == 1) "Se a fatura não coube numa só imagem, adicione as páginas seguintes antes de enviar."
+                else "Vão ser juntas num único documento, por esta ordem.",
+                style = MaterialTheme.typography.bodySmall, color = C.muted,
+            )
             draft.forEachIndexed { i, f ->
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Icon(if (f.mimeType == "application/pdf") Icons.Outlined.PictureAsPdf else Icons.Outlined.Image, null, tint = C.muted, modifier = Modifier.size(20.dp))
@@ -512,8 +506,9 @@ private fun DraftCard(draft: MutableList<CapturedFile>, onSend: () -> Unit) {
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 4.dp)) {
-                OutlinedButton(onClick = { draft.clear() }, border = BorderStroke(1.dp, C.line)) { Text("Descartar") }
-                Button(onClick = onSend, modifier = Modifier.weight(1f)) { Text("Enviar como uma fatura") }
+                IconButton(onClick = { draft.clear() }) { Icon(Icons.Outlined.Delete, "Descartar", tint = C.muted) }
+                OutlinedButton(onClick = onAddPage, border = BorderStroke(1.dp, C.line), modifier = Modifier.weight(1f)) { Text("+ Página") }
+                Button(onClick = onSend, modifier = Modifier.weight(1.3f)) { Text("Enviar") }
             }
         }
     }
